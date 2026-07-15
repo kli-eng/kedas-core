@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* KEDAS v3.0.2 — estilos base */
+html, body {
+  height: 100%;
+}
+
+/* Mejora accesibilidad: focus visible en todos los elementos interactivos */
+:focus-visible {
+  outline: 2px solid #1e3a8a;
+  outline-offset: 2px;
+}
+
+/* Skip-link para navegación por teclado (WCAG 2.1 AA — 2.4.1) */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #1e3a8a;
+  color: white;
+  padding: 8px 12px;
+  z-index: 100;
+  transition: top 0.2s;
+}
+.skip-link:focus {
+  top: 0;
+}

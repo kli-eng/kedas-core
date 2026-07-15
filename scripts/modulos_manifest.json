@@ -1,0 +1,91 @@
+{
+  "version_manifiesto": "1.0",
+  "fecha": "2026-07-14",
+  "referencia": "DEC-30 (nombres de módulo), DEC-42 (dependencias compartidas)",
+
+  "transversal": {
+    "descripcion": "Infraestructura base — se instala siempre, sin importar qué módulos se elijan",
+    "migraciones": [
+      "004_kedas_usuarios.sql",
+      "006_fix_C49_dashboard_view.sql",
+      "007_cifrar_pseudonimos.sql",
+      "008_kedas_kolibri_cache.sql",
+      "009_kedas_interacciones_kolibri.sql",
+      "010b_fix_slep_nombre_establecimiento.sql",
+      "015_mfa_totp.sql",
+      "021_kedas_bugpriv01_pseudonimizacion.sql"
+    ]
+  },
+
+  "modulos": {
+    "MOD-01": {
+      "nombre": "Indicadores Educativos",
+      "migraciones_propias": [],
+      "nota": "Se compone de datos ya generados por otros módulos — sin tablas propias hoy"
+    },
+    "MOD-02": {
+      "nombre": "Convivencia Escolar",
+      "migraciones_propias": [
+        "011_kedas_denuncias.sql",
+        "017_incidente_completitud.sql",
+        "020_kedas_convivencia_plazos_proteccion.sql"
+      ]
+    },
+    "MOD-03": {
+      "nombre": "Inteligencia Curricular",
+      "migraciones_propias": [
+        "018_kedas_oa.sql",
+        "019_kedas_sesiones_curriculares.sql"
+      ],
+      "migraciones_compartidas": [
+        "022_kedas_mod06a_simce_puntajes_corte.sql",
+        "024_kedas_mod06d_dia.sql"
+      ]
+    },
+    "MOD-04": {
+      "nombre": "Contenidos REA",
+      "migraciones_propias": [
+        "010_kedas_slep_rea.sql"
+      ]
+    },
+    "MOD-05": {
+      "nombre": "Cumplimiento Normativo",
+      "migraciones_propias": [
+        "016_arco_solicitudes.sql"
+      ]
+    },
+    "MOD-06": {
+      "nombre": "Predicciones",
+      "migraciones_propias": [
+        "013_kedas_alertas_establecimiento.sql",
+        "023_kedas_mod06b_idps.sql"
+      ],
+      "migraciones_compartidas": [
+        "022_kedas_mod06a_simce_puntajes_corte.sql",
+        "024_kedas_mod06d_dia.sql"
+      ]
+    },
+    "MOD-07": {
+      "nombre": "Participación",
+      "migraciones_propias": [
+        "012_kedas_apoderado_estudiante.sql"
+      ]
+    },
+    "MOD-08": {
+      "nombre": "KIRA",
+      "migraciones_propias": [
+        "014_kedas_ia_analisis.sql",
+        "025_kedas_kira_tables.sql"
+      ],
+      "nota": "No es uno de los 7 módulos DEC-30 — es el asistente IA, transversal a su propio producto. Requiere Ollama activo."
+    }
+  },
+
+  "excluir_siempre": {
+    "descripcion": "Datos de demostración/validación técnica — nunca instalar en un cliente nuevo real (ver corrección de integridad de datos, 11-jul-2026)",
+    "archivos": [
+      "011_kolibri_online_piloto.sql",
+      "012_kolibri_online_resumido.sql"
+    ]
+  }
+}
