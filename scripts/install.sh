@@ -311,11 +311,22 @@ levantar_servicios() {
     info "Paso 6: Levantando servicios Docker..."
     cd "$KEDAS_HOME"
 
-    # VERIFICAR: se asume docker-compose.yml (base) reproduce los 6 servicios
-    # reales de producción (kedas-caddy, kedas-frontend, kedas-api, kedas-postgres,
-    # kedas-ollama, kedas-mlflow). Esto no se contrastó línea por línea contra
-    # Contabo en esta sesión — confirmar antes del primer uso real de este script.
-    docker compose up -d >> "$LOG_FILE" 2>&1
+    # CONFIRMADO 16-jul-2026 con evidencia real: se corrió
+    # `docker compose -f docker-compose.yml -f docker-compose.urbano.yml config`
+    # contra el VPS de producción y se comparó imagen por imagen contra `docker ps`.
+    # Las 6 imágenes coinciden exactamente (postgres, api, frontend, caddy, mlflow,
+    # ollama). Sin errores de sintaxis en la config combinada.
+    #
+    # IMPORTANTE: docker-compose.urbano.yml también declara un servicio "kolibri"
+    # (container, imagen learningequality/kolibri:0.19.3) que es un residuo de un
+    # diseño anterior — Kolibri real corre en el HOST (systemd, v0.19.4, puerto 8080),
+    # confirmado que nunca corre como container. Si se incluyera, chocaría por
+    # conflicto de puerto con el Kolibri real. Por eso se enumeran los servicios
+    # explícitamente, excluyendo "kolibri".
+    docker compose \
+        -f docker-compose.yml \
+        -f docker-compose.urbano.yml \
+        up -d postgres api frontend caddy mlflow ollama >> "$LOG_FILE" 2>&1
 
     log "Servicios Docker iniciados. Esperando inicialización (30s)..."
     sleep 30
