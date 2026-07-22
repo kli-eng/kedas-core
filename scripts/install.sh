@@ -139,6 +139,18 @@ registrar_perfil() {
     info "Este dato queda registrado en .env (KEDAS_PERFIL_INSTALACION) para referencia futura."
 }
 
+verificar_usuario_kedas() {
+    info "Verificando usuario del sistema $KEDAS_USER..."
+    if id "$KEDAS_USER" &>/dev/null; then
+        log "Usuario $KEDAS_USER ya existe."
+    else
+        useradd -m -s /bin/bash "$KEDAS_USER"
+        usermod -aG sudo "$KEDAS_USER"
+        log "Usuario $KEDAS_USER creado (con home y permisos sudo)."
+        warn "Se creó $KEDAS_USER sin contraseña interactiva — configurar acceso SSH propio o clave si se usará para login directo."
+    fi
+}
+
 # ══════════════════════════════════════════════════════════════
 # PASO 1 — SISTEMA BASE
 # ══════════════════════════════════════════════════════════════
@@ -206,6 +218,11 @@ instalar_docker() {
 configurar_repositorio() {
     info "Paso 3: Configurando repositorio KEDAS ($REPO_URL)..."
     mkdir -p "$KEDAS_HOME"
+    # Git moderno bloquea operaciones si el dueño del repo en disco no coincide
+    # con el usuario que ejecuta el comando ("dubious ownership"). Este script
+    # corre como root pero deja el repo con dueño $KEDAS_USER (chown abajo) —
+    # descubierto en la prueba de despliegue desde cero, DEC-49.
+    git config --global --add safe.directory "$KEDAS_HOME"
     if [[ -d "$KEDAS_HOME/.git" ]]; then
         log "Repositorio ya existe. Actualizando..."
         git -C "$KEDAS_HOME" pull origin main >> "$LOG_FILE" 2>&1
@@ -229,7 +246,6 @@ instalar_kolibri_host() {
         log "Kolibri ${KOLIBRI_VERSION} instalado vía pip."
     fi
 
-    # Servicio systemd/init.d — verificado en producción como servicio LSB (init.d) habilitado
     if systemctl is-enabled kolibri &>/dev/null; then
         log "Servicio kolibri ya habilitado."
     else
@@ -311,18 +327,11 @@ levantar_servicios() {
     info "Paso 6: Levantando servicios Docker..."
     cd "$KEDAS_HOME"
 
-    # CONFIRMADO 16-jul-2026 con evidencia real: se corrió
-    # `docker compose -f docker-compose.yml -f docker-compose.urbano.yml config`
-    # contra el VPS de producción y se comparó imagen por imagen contra `docker ps`.
-    # Las 6 imágenes coinciden exactamente (postgres, api, frontend, caddy, mlflow,
-    # ollama). Sin errores de sintaxis en la config combinada.
-    #
-    # IMPORTANTE: docker-compose.urbano.yml también declara un servicio "kolibri"
-    # (container, imagen learningequality/kolibri:0.19.3) que es un residuo de un
-    # diseño anterior — Kolibri real corre en el HOST (systemd, v0.19.4, puerto 8080),
-    # confirmado que nunca corre como container. Si se incluyera, chocaría por
-    # conflicto de puerto con el Kolibri real. Por eso se enumeran los servicios
-    # explícitamente, excluyendo "kolibri".
+    # docker-compose.urbano.yml declara "kedas-external" como red externa
+    # (external: true) — Compose espera que ya exista, creada por fuera del
+    # compose file. Descubierto en la prueba de despliegue desde cero, DEC-49.
+    docker network create kedas-external 2>/dev/null || true
+
     docker compose \
         -f docker-compose.yml \
         -f docker-compose.urbano.yml \
@@ -364,9 +373,6 @@ aplicar_migraciones() {
         return
     fi
 
-    # kedas-core NO incluye módulos Premium (Convivencia avanzada, Curricular, KIRA,
-    # Predicciones, Reportes SLEP) — aplica únicamente las migraciones de plataforma
-    # base presentes en este repositorio, en orden numérico.
     for migracion in $(ls migrations/*.sql 2>/dev/null | sort -V); do
         info "Aplicando: $(basename "$migracion")"
         docker exec -i kedas-postgres psql -U kedas -d kedas_db < "$migracion" >> "$LOG_FILE" 2>&1
@@ -386,9 +392,7 @@ configurar_backup() {
     info "Paso 8: Configurando backup automático (Restic + Backblaze B2)..."
     warn "Este paso requiere credenciales B2 propias (B2_ACCOUNT_ID, B2_ACCOUNT_KEY,"
     warn "RESTIC_REPOSITORY, RESTIC_PASSWORD) — no se generan automáticamente."
-    warn "Ver scripts/configurar_backup.sh (pendiente de escribir, INST-01b futuro)"
-    warn "para el asistente de configuración interactivo."
-    # Cron real verificado en producción: diario 3 AM, dump de Postgres + directorio del proyecto
+    warn "Ver scripts/configurar_backup.sh para el asistente de configuración interactivo."
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -487,6 +491,7 @@ main() {
     verificar_root
     verificar_sistema_operativo
     verificar_hardware_minimo
+    verificar_usuario_kedas
     registrar_perfil
     instalar_dependencias_sistema
     configurar_firewall
