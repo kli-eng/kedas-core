@@ -14,7 +14,7 @@
 #   - Sin Grafana/Prometheus/MinIO — simplificación intencional, no brecha
 #
 # Compatible con: Ubuntu Server 22.04 LTS, 24.04 LTS
-# Uso: sudo bash scripts/install.sh --modulos MOD-02,MOD-04 [--silencioso] [--dominio kedas.midominio.cl]
+# Uso: sudo bash scripts/install.sh --perfil urbano [--silencioso] [--dominio kedas.midominio.cl]
 # Licencia: AGPL v3 (ver LICENSE) — este script vive en kedas-core
 # ============================================================
 set -euo pipefail
