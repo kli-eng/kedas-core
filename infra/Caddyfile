@@ -1,0 +1,81 @@
+{
+    email {$KEDAS_ADMIN_EMAIL:admin@example.com}
+}
+
+# ============================================================
+# KEDAS Core — Caddyfile
+#
+# ADAPTADO 29-jul-2026 (DEC-59) desde el Caddyfile de Premium:
+# - Dominio configurable vía variable de entorno KEDAS_DOMINIO
+#   (Premium lo tenía fijo: kedas-demo.duckdns.org)
+# - Sin /mlflow/* ni /grafana/* -- ambos servicios son exclusivos
+#   de Premium y no existen en el compose de Core.
+# ============================================================
+
+{$CADDY_DOMAIN:localhost} {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+    }
+
+    handle /health {
+        reverse_proxy kedas-api:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+        }
+    }
+
+    handle /api/v1/* {
+        reverse_proxy kedas-api:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+        }
+    }
+
+    handle /kolibri/* {
+        uri strip_prefix /kolibri
+        reverse_proxy host.docker.internal:8080 {
+            header_down Location "^/(.*)" "/kolibri/$1"
+        }
+    }
+    handle /api/* {
+        reverse_proxy host.docker.internal:8080
+    }
+    handle /es-419/* {
+        reverse_proxy host.docker.internal:8080
+    }
+    handle /en/* {
+        reverse_proxy host.docker.internal:8080
+    }
+    handle /static/* {
+        reverse_proxy host.docker.internal:8080
+    }
+    handle /content/* {
+        reverse_proxy host.docker.internal:8080
+    }
+    handle /zipcontent/* {
+        reverse_proxy host.docker.internal:8080
+    }
+    handle /downloadcontent/* {
+        reverse_proxy host.docker.internal:8080
+    }
+
+    handle / {
+        redir /kedas/ permanent
+    }
+    handle /kedas/* {
+        reverse_proxy frontend:3000
+    }
+    handle {
+        reverse_proxy host.docker.internal:8080
+    }
+
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 50mb
+            roll_keep 5
+        }
+        format json
+    }
+}

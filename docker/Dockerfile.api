@@ -1,0 +1,70 @@
+# ============================================================
+# KEDAS Core — Dockerfile para API FastAPI
+# Archivo: docker/Dockerfile.api
+# Imagen base: python:3.11-slim (estable, liviana)
+#
+# ADAPTADO 29-jul-2026 (DEC-59) desde el Dockerfile.api de Premium:
+# - Sin dependencias de sistema para WeasyPrint (PDF de reportes SLEP,
+#   módulo Premium) -- Core no genera PDFs.
+# - Sin COPY de modules/ ni ml/ -- esas carpetas no existen en kedas-core
+#   (pertenecen a Premium: Convivencia, Curricular, Predicciones, etc.)
+# ============================================================
+
+# ── Etapa 1: Dependencias ─────────────────────────────────────
+FROM python:3.11-slim AS dependencies
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ── Etapa 2: Imagen final ──────────────────────────────────────
+FROM python:3.11-slim AS final
+
+LABEL maintainer="Kairós Learning Intelligent (KLI)" \
+      version="3.4.0" \
+      description="KEDAS Core — Plataforma base gratuita (AGPL v3)"
+
+RUN groupadd -r kedas && useradd -r -g kedas -m -d /app kedas
+WORKDIR /app
+
+# Dependencias de sistema en runtime (solo libpq + curl -- sin WeasyPrint)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=dependencies /usr/local/bin /usr/local/bin
+
+# Solo api/ -- Core no tiene modules/ ni ml/
+COPY --chown=kedas:kedas api/ ./api/
+
+USER kedas
+
+ENV PYTHONPATH="/app" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UVICORN_WORKERS="2" \
+    UVICORN_PORT="8000" \
+    UVICORN_HOST="0.0.0.0" \
+    LOG_LEVEL="INFO"
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["bash", "-c", \
+     "uvicorn api.main:app \
+       --host $UVICORN_HOST \
+       --port $UVICORN_PORT \
+       --workers $UVICORN_WORKERS \
+       --log-level ${LOG_LEVEL,,} \
+       --no-access-log"]
