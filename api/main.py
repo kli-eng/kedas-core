@@ -1,12 +1,17 @@
 # ============================================================
-# KEDAS v3.4.0 — API REST Principal
+# KEDAS Core — API REST Principal
 # Archivo: api/main.py
-# Dependencias: fastapi==0.115.0, uvicorn==0.30.0, python-jose==3.3.0,
-#               passlib==1.7.4, asyncpg==0.29.0, pydantic==2.7.0,
-#               python-multipart==0.0.9
-# Licencias: MIT (FastAPI), MIT (uvicorn), MIT (python-jose)
+#
+# CORREGIDO 29-jul-2026 (DEC-59): la versión anterior era una copia
+# literal de Premium — importaba curricular, apoderado, denuncias, ia,
+# convivencia, predicciones, reportes, pseudonimos, reportes_slep,
+# indicadores. NINGUNO de esos archivos existe en kedas-core. El API
+# nunca pudo arrancar en este repositorio (ModuleNotFoundError en el
+# primer import), en ninguna versión anterior a esta.
+#
+# Registra únicamente los 6 routers reales de Core: auth, estudiantes,
+# dashboard, admin, kolibri, rea.
 # ============================================================
-
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -17,17 +22,7 @@ from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# Importar routers de cada módulo
-from api.routers import indicadores as indicadores_router
-from api.routers import (
-    curricular,
-    apoderado,
-    denuncias,
-    ia,
-    rea,
-    estudiantes, convivencia, predicciones, reportes, auth, dashboard,
-    admin, pseudonimos, reportes_slep, kolibri,
-)
+from api.routers import auth, estudiantes, dashboard, admin, kolibri, rea
 
 # ── Configuración de logging ──────────────────────────────────
 logging.basicConfig(
@@ -41,20 +36,19 @@ logger = logging.getLogger("kedas.api")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicialización y cierre limpio de recursos."""
-    logger.info("KEDAS v3.4.0 API iniciando...")
-    # Aquí se puede inicializar el pool de conexiones a PostgreSQL
+    logger.info("KEDAS Core API iniciando...")
     yield
-    logger.info("KEDAS v3.4.0 API cerrando conexiones...")
+    logger.info("KEDAS Core API cerrando conexiones...")
 
 
 # ── Instancia principal de la API ────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 app = FastAPI(
-    title="KEDAS v3.4.0 API",
+    title="KEDAS Core API",
     description=(
-        "API REST del Sistema Kolibri Educational Data AI System v3.0. "
+        "API REST de KEDAS Core — plataforma base gratuita (AGPL v3). "
         "Todos los endpoints requieren autenticación JWT. "
-        "Los datos de estudiantes están seudonomizados (Art. 2°l Ley 21.719)."
+        "Los datos de estudiantes están seudonimizados (Art. 2°l Ley 21.719)."
     ),
     version="3.4.0",
     docs_url="/api/docs",
@@ -63,7 +57,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS — restringido al dominio del colegio ─────────────────
+# ── CORS ────────────────────────────────────────────────────
 ALLOWED_ORIGINS = os.getenv("KEDAS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -79,10 +73,7 @@ app.add_middleware(
 # ── Manejador global de errores ───────────────────────────────
 @app.exception_handler(Exception)
 async def manejador_errores_global(request: Request, exc: Exception):
-    """
-    Intercepta errores no manejados y los registra sin exponer
-    información sensible en la respuesta al cliente.
-    """
+    """Intercepta errores no manejados sin exponer información sensible."""
     logger.error(f"Error no manejado en {request.url}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
@@ -90,36 +81,17 @@ async def manejador_errores_global(request: Request, exc: Exception):
     )
 
 
-# ── Registrar routers ─────────────────────────────────────────
-app.include_router(auth.router,         prefix="/api/v1/auth",        tags=["Autenticación"])
-app.include_router(estudiantes.router,  prefix="/api/v1/estudiantes", tags=["Estudiantes"])
-app.include_router(convivencia.router,  prefix="/api/v1/convivencia", tags=["Convivencia"])
-app.include_router(predicciones.router, prefix="/api/v1/predicciones",tags=["Predicciones IA"])
-app.include_router(reportes.router,     prefix="/api/v1/reportes",    tags=["Reportes"])
-app.include_router(dashboard.router,    prefix="/api/v1/dashboard",    tags=["Dashboard"])
-app.include_router(admin.router,          prefix="/api/v1/admin",       tags=["Administración"])
-app.include_router(pseudonimos.router,    prefix="/api/v1",             tags=["Seudónimos"])
-app.include_router(reportes_slep.router,  prefix="/api/v1/reportes",    tags=["Reportes SLEP"])
-app.include_router(kolibri.router,         prefix="/api/v1/kolibri",    tags=["Kolibri"])
-app.include_router(rea.router,        prefix="/api/v1",             tags=["REA"])
-app.include_router(ia.router,         prefix="/api/v1",             tags=["IA Local"])
-app.include_router(denuncias.router,  prefix="/api/v1",             tags=["Denuncias Ley Karin"])
-app.include_router(indicadores_router.router, prefix="/api/v1/indicadores", tags=["Indicadores Contexto"])
-app.include_router(curricular.router, prefix="/api/v1/curricular",
-                             tags=["Inteligencia Curricular"])
-app.include_router(apoderado.router,  prefix="/api/v1",             tags=["Portal Apoderado"])
+# ── Registrar routers (solo los 6 reales de Core) ─────────────
+app.include_router(auth.router,        prefix="/api/v1/auth",        tags=["Autenticación"])
+app.include_router(estudiantes.router, prefix="/api/v1/estudiantes", tags=["Estudiantes"])
+app.include_router(dashboard.router,   prefix="/api/v1/dashboard",   tags=["Dashboard"])
+app.include_router(admin.router,       prefix="/api/v1/admin",       tags=["Administración"])
+app.include_router(kolibri.router,     prefix="/api/v1/kolibri",     tags=["Kolibri"])
+app.include_router(rea.router,         prefix="/api/v1",             tags=["REA"])
 
 
 # ── Health check (sin autenticación) ─────────────────────────
 @app.get("/health", tags=["Sistema"])
 async def health_check():
-    """
-    Endpoint de salud para healthchecks de Docker y monitoreo Prometheus.
-    No requiere autenticación. No expone información sensible.
-    """
-    return {"estado": "ok", "version": "3.4.0", "sistema": "KEDAS"}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=False)
+    """Endpoint de salud para healthchecks de Docker. No requiere autenticación."""
+    return {"estado": "ok", "version": "3.4.0", "sistema": "KEDAS Core"}

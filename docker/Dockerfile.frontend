@@ -1,0 +1,30 @@
+# ============================================================
+# KEDAS Core -- Dockerfile Frontend React 18 + Vite 5
+# SPA estatica servida por nginx
+# base: /kedas/ (configurado en vite.config.js)
+#
+# Sin cambios respecto a Premium -- ya era genérico, sin ninguna
+# dependencia de módulos Premium.
+# ============================================================
+# -- Etapa 1: Build
+FROM node:20-alpine AS builder
+WORKDIR /app
+ARG PUBLIC_API_URL=/api
+ARG PUBLIC_APP_VERSION=3.4.0
+ENV VITE_API_URL=$PUBLIC_API_URL \
+    VITE_APP_VERSION=$PUBLIC_APP_VERSION
+COPY frontend/package*.json ./
+RUN npm ci --silent
+COPY frontend/ .
+# Vite genera /app/dist con base /kedas/
+RUN npm run build
+# -- Etapa 2: nginx sirve la SPA
+FROM nginx:1.27-alpine AS production
+# Config nginx para SPA con base /kedas/
+RUN printf 'server {\n    listen 3000;\n    root /usr/share/nginx/html;\n    index index.html;\n    location /kedas/ {\n        try_files $uri $uri/ /kedas/index.html;\n    }\n    location / {\n        return 301 /kedas/;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+# dist/ va directo a /kedas/ -- assets quedan en /kedas/assets/
+COPY --from=builder /app/dist /usr/share/nginx/html/kedas
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -q --spider http://localhost:3000/kedas/ || exit 1
+CMD ["nginx", "-g", "daemon off;"]
