@@ -49,7 +49,7 @@ while [[ $# -gt 0 ]]; do
             echo "NOTA: este instalador (kedas-core) NO incluye módulos Premium"
             echo "(Convivencia avanzada, Inteligencia Curricular, KIRA, Predicciones,"
             echo "Reportes SLEP) — instala únicamente la plataforma base gratuita."
-            echo "Para módulos Premium, ver el instalador de kedas-premium (Tier 1/2/3)."
+            echo "Para módulos Premium, ver el instalador de kedas (Tier 1/2/3)."
             exit 0 ;;
         *) echo "Argumento no reconocido: $1"; exit 1 ;;
     esac
@@ -381,7 +381,7 @@ aplicar_migraciones() {
     log "Migraciones Core aplicadas."
     warn "Este servidor NO tiene módulos Premium instalados (Convivencia avanzada,"
     warn "Inteligencia Curricular, KIRA, Predicciones, Reportes SLEP) — para activarlos"
-    warn "se requiere una licencia comercial KLI y el instalador de kedas-premium."
+    warn "se requiere una licencia comercial KLI y el instalador de kedas."
 }
 
 # ══════════════════════════════════════════════════════════════
