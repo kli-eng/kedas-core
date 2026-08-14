@@ -16,7 +16,7 @@ de la institución. Kairós Learning Intelligent (KLI).
 - Panel de administración (usuarios, establecimientos)
 
 ## Qué NO incluye (Licencia Comercial KLI — Tier 1 Compliance Plus, repo
-privado kedas-premium)
+privado kedas)
 
 Confirmado contra KEDAS_Plan_Comercial_v2.0 (8-jul-2026) y
 KEDAS_Decision_Licencia_v2 — documentos internos de KLI:
@@ -37,7 +37,7 @@ generada a partir del monolito interno de KEDAS. Actualmente:
 
 - `api/main.py` y `frontend/src/services/api.js` se copiaron tal cual y
   pueden contener referencias a endpoints/funciones que solo existen en
-  kedas-premium — la separación funcional completa (para que este
+  kedas — la separación funcional completa (para que este
   repo sea 100% autoinstalable de forma independiente) es un trabajo
   pendiente de Sprint 6 (INST-01b).
 - El historial de commits no se preservó — es un export limpio, no un
@@ -50,7 +50,7 @@ archivo y su razonamiento.
 ## Licencia
 
 AGPL v3 — ver `LICENSE`. Contribuciones sujetas a CLA (ver `CONTRIBUTORS.md`
-en el repositorio kedas-premium).
+en el repositorio kedas).
 
 ---
 
