@@ -10,7 +10,7 @@ absoluto — una instalación desde el repo público no podía crear ni una
 sola tabla. Se reconstruyó extrayendo el subconjunto de 12 tablas que
 `auth.py`, `estudiantes.py`, `dashboard.py`, `kolibri.py`, `admin.py` y
 `rea.py` realmente necesitan, filtrando la migración fundacional ya
-validada en el repo Premium (`kedas-premium/migrations/001_schema_fundacional.sql`).
+validada en el repo Premium (`kedas/migrations/001_schema_fundacional.sql`).
 
 ## ⚠️ IMPORTANTE: no usar `sort -V` para aplicar estas migraciones
 
