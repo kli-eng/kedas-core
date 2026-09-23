@@ -249,10 +249,26 @@ instalar_kolibri_host() {
     if systemctl is-enabled kolibri &>/dev/null; then
         log "Servicio kolibri ya habilitado."
     else
-        warn "Servicio systemd de Kolibri no configurado automáticamente por este script."
-        warn "Verificar manualmente: la instalación real usa /etc/init.d/kolibri (LSB), 'systemctl enable kolibri'."
-        warn "# VERIFICAR: este paso replica lo observado en producción, pero el mecanismo exacto"
-        warn "# de creación del unit/init script de Kolibri no se registró paso a paso durante la instalación original."
+        info "Creando servicio systemd de Kolibri (hallazgo real, probado en VPS desechable, 21-sep-2026)..."
+        cat > /etc/systemd/system/kolibri.service << 'KOLIBRISVCEOF'
+[Unit]
+Description=Kolibri Educational Data AI System
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Environment="KOLIBRI_HOME=/root/.kolibri"
+ExecStart=/usr/local/bin/kolibri start --port 8080 --foreground
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+KOLIBRISVCEOF
+        systemctl daemon-reload
+        systemctl enable kolibri >> "$LOG_FILE" 2>&1
+        log "Servicio systemd de Kolibri creado y habilitado."
     fi
 
     systemctl start kolibri 2>> "$LOG_FILE" || warn "No se pudo iniciar kolibri automáticamente — revisar manualmente."
