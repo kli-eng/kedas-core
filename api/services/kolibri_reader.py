@@ -7,8 +7,8 @@
 #
 # Modo offline-first: lee CSV exportados desde Kolibri admin,
 # NO requiere acceso a la API de Kolibri en tiempo real.
-# Validado contra CSVs reales del piloto Olmué (mayo 2026):
-#   - 4 usuarios: [usuario omitido], [usuario omitido], [usuario omitido], [usuario omitido]
+# Validado contra CSVs de la experiencia offline de validación técnica (abril-mayo 2026, no es de Olmué):
+#   - 4 usuarios (identificadores omitidos por privacidad)
 #   - 172 sesiones, 70 resumidos, 53 completados
 #   - 7.41 horas totales, canal "Chile - 1° Básico a 4° Medio - Matemáticas"
 # ============================================================
