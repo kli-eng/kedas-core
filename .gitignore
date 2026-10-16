@@ -4,3 +4,4 @@ dist/
 *.bak_*
 *.log
 .DS_Store
+__pycache__/

@@ -7,6 +7,20 @@ import {
 } from "../../services/api.js";
 import { NOMBRE_ROL, ROLES } from "../../utils/roles.js";
 
+// DEC-73 (16-oct-2026): política de contraseñas (NIST SP 800-63B-4 y OWASP ASVS)
+const PWD_MIN = 15;
+const PWD_MAX = 64;
+
+// Fecha AAAA-MM-DD en hora de Chile, para el campo «Acceso hasta»
+function fechaChile(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
+}
+// El acceso dura hasta el final de ese día (la API lo interpreta en hora de Chile)
+function venceDesdeFecha(fecha) {
+  return fecha ? `${fecha}T23:59:00` : null;
+}
+
 export default function UsuariosCRUD({ user }) {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -126,12 +140,13 @@ export default function UsuariosCRUD({ user }) {
                 <th className="text-left py-2 px-3">Email</th>
                 <th className="text-left py-2 px-3">Estab.</th>
                 <th className="text-left py-2 px-3">Último login</th>
+                <th className="text-left py-2 px-3">Acceso hasta</th>
                 <th className="text-right py-2 px-3">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {usuarios.length === 0 && (
-                <tr><td colSpan="7" className="text-center py-6 text-slate-500">
+                <tr><td colSpan="8" className="text-center py-6 text-slate-500">
                   No hay usuarios. Crea el primero con el botón arriba.
                 </td></tr>
               )}
@@ -150,6 +165,14 @@ export default function UsuariosCRUD({ user }) {
                     {u.ultimo_login
                       ? new Date(u.ultimo_login).toLocaleString("es-CL")
                       : "Nunca"}
+                    {u.debe_cambiar_password && (
+                      <div className="text-amber-700">Debe cambiar contraseña</div>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-xs text-slate-500">
+                    {u.vence_en
+                      ? new Date(u.vence_en).toLocaleDateString("es-CL", { timeZone: "America/Santiago" })
+                      : "—"}
                   </td>
                   <td className="py-2 px-3 text-right space-x-2">
                     <button
@@ -188,11 +211,12 @@ export default function UsuariosCRUD({ user }) {
 function UsuarioFormModal({ user, editing, onClose, onSave }) {
   const [form, setForm] = useState(
     editing
-      ? { ...editing, password: "", password_nueva: "" }
+      ? { ...editing, password: "", vence_fecha: fechaChile(editing.vence_en) }
       : {
           username: "", password: "", nombre_completo: "", email: "",
           role: ROLES.DOCENTE,
           establecimiento_id: user.establecimiento_id || null,
+          vence_fecha: "",
         }
   );
 
@@ -210,11 +234,14 @@ function UsuarioFormModal({ user, editing, onClose, onSave }) {
 
   function generarPasswordSegura() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
+    // DEC-73: 20 caracteres con crypto.getRandomValues (Math.random no es seguro)
+    const azar = new Uint32Array(20);
+    crypto.getRandomValues(azar);
     let pwd = "";
-    for (let i = 0; i < 14; i++) {
-      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < azar.length; i++) {
+      pwd += chars.charAt(azar[i] % chars.length);
     }
-    update(editing ? "password_nueva" : "password", pwd);
+    update("password", pwd);
   }
 
   async function handleSubmit(e) {
@@ -228,7 +255,10 @@ function UsuarioFormModal({ user, editing, onClose, onSave }) {
         if (form.nombre_completo !== editing.nombre_completo) payload.nombre_completo = form.nombre_completo;
         if (form.email !== editing.email) payload.email = form.email || null;
         if (form.role !== editing.role) payload.role = form.role;
-        if (form.password_nueva) payload.password_nueva = form.password_nueva;
+        // DEC-73: la contraseña de otra persona solo se cambia con «Reset pwd»
+        if (form.vence_fecha !== fechaChile(editing.vence_en)) {
+          payload.vence_en = venceDesdeFecha(form.vence_fecha);
+        }
         if (Object.keys(payload).length === 0) {
           alert("Sin cambios.");
           setSubmitting(false);
@@ -242,6 +272,7 @@ function UsuarioFormModal({ user, editing, onClose, onSave }) {
           email: form.email || null,
           role: form.role,
           establecimiento_id: form.establecimiento_id,
+          vence_en: venceDesdeFecha(form.vence_fecha),
         };
       }
       await onSave(payload);
@@ -335,25 +366,52 @@ function UsuarioFormModal({ user, editing, onClose, onSave }) {
             </select>
           </div>
         )}
-        <div>
-          <label className="block text-sm text-slate-700">
-            {editing ? "Nueva contraseña (dejar en blanco para no cambiar)" : "Contraseña inicial (mín. 12 chars)"}
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              minLength={editing ? 0 : 12}
-              required={!editing}
-              value={editing ? (form.password_nueva || "") : form.password}
-              onChange={(e) => update(editing ? "password_nueva" : "password", e.target.value)}
-              className="flex-1 mt-1 px-3 py-1.5 border border-slate-300 rounded-md text-sm font-mono"
-              placeholder={editing ? "(opcional)" : "mín. 12 caracteres"}
-            />
-            <button type="button" onClick={generarPasswordSegura}
-              className="mt-1 px-3 text-xs bg-slate-100 hover:bg-slate-200 rounded-md">
-              Generar
-            </button>
+        {!editing && (
+          <div>
+            <label className="block text-sm text-slate-700">
+              Contraseña inicial ({PWD_MIN} a {PWD_MAX} caracteres)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                minLength={PWD_MIN}
+                maxLength={PWD_MAX}
+                required
+                value={form.password}
+                onChange={(e) => update("password", e.target.value)}
+                className="flex-1 mt-1 px-3 py-1.5 border border-slate-300 rounded-md text-sm font-mono"
+                placeholder={`mín. ${PWD_MIN} caracteres`}
+              />
+              <button type="button" onClick={generarPasswordSegura}
+                className="mt-1 px-3 text-xs bg-slate-100 hover:bg-slate-200 rounded-md">
+                Generar
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              La persona deberá cambiarla la primera vez que ingrese. Entréguela por un canal
+              distinto al del nombre de usuario.
+            </p>
           </div>
+        )}
+
+        {editing && (
+          <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md p-2">
+            Para cambiar la contraseña de esta persona use «Reset pwd» en la tabla: genera una
+            temporal y la obliga a elegir una nueva al ingresar.
+          </p>
+        )}
+
+        <div>
+          <label className="block text-sm text-slate-700">Acceso hasta (opcional)</label>
+          <input
+            type="date"
+            value={form.vence_fecha || ""}
+            onChange={(e) => update("vence_fecha", e.target.value)}
+            className="w-full mt-1 px-3 py-1.5 border border-slate-300 rounded-md text-sm"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            El acceso termina al final de ese día (hora de Chile). Vacío: sin fecha de término.
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

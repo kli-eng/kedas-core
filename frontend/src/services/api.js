@@ -59,11 +59,42 @@ export async function loginUser({ username, password }) {
     body
   });
   if (res.status === 401) throw new Error("Usuario o contraseña incorrectos");
-  if (!res.ok) throw new Error(`Error ${res.status} al iniciar sesión`);
+  if (!res.ok) throw new Error(await detalleError(res, `Error ${res.status} al iniciar sesión`));
   const data = await res.json();
+  // DEC-73: contraseña fijada por otra persona. El token temporal NO se guarda:
+  // solo sirve para /auth/cambiar-password.
+  if (data.debe_cambiar_password) {
+    return { debeCambiar: true, tokenTemporal: data.access_token };
+  }
   localStorage.setItem("kedas_token", data.access_token);
   const user = await getMe();
   return { token: data.access_token, user };
+}
+
+async function detalleError(res, porDefecto) {
+  try {
+    const b = await res.json();
+    return typeof b.detail === "string" ? b.detail : porDefecto;
+  } catch {
+    return porDefecto;
+  }
+}
+
+// DEC-73: cambio de contraseña (obligatorio al primer ingreso o voluntario)
+export async function cambiarPassword({ token, passwordActual, passwordNueva }) {
+  const res = await fetch(`${API_BASE}/auth/cambiar-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token || getToken()}`,
+    },
+    body: JSON.stringify({ password_actual: passwordActual, password_nueva: passwordNueva }),
+  });
+  if (res.status === 401) {
+    throw new Error("El tiempo para cambiar la contraseña expiró. Vuelva a ingresar.");
+  }
+  if (!res.ok) throw new Error(await detalleError(res, `Error ${res.status} al cambiar la contraseña`));
+  return res.json();
 }
 
 export const getMe = () => request("/auth/me");

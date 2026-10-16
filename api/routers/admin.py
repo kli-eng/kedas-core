@@ -9,7 +9,8 @@
 import logging
 import secrets
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -17,7 +18,7 @@ import asyncpg
 
 from api.routers.auth import (
     TokenData, verificar_permiso, hashear_password, hash_actor_id,
-    ROLES_VALIDOS,
+    ROLES_VALIDOS, validar_password_nueva,
 )
 from api.routers.estudiantes import get_db
 
@@ -25,15 +26,28 @@ logger = logging.getLogger("kedas.admin")
 router = APIRouter()
 
 
+def _con_zona_chile(v):
+    """DEC-73: una fecha de vencimiento sin zona horaria se interpreta en hora de Chile."""
+    if v is not None and v.tzinfo is None:
+        return v.replace(tzinfo=ZoneInfo("America/Santiago"))
+    return v
+
+
 # ── Modelos ───────────────────────────────────────────────────
 class CrearUsuarioIn(BaseModel):
     username: str = Field(..., min_length=3, max_length=64)
-    password: str = Field(..., min_length=12,
-        description="Mínimo 12 caracteres. Si vienen vacíos, se genera uno aleatorio.")
+    password: str = Field(..., max_length=128,
+        description="Contraseña inicial. DEC-73: 15 a 64 caracteres; la persona la cambia al primer ingreso.")
     nombre_completo: str = Field(..., min_length=2, max_length=255)
     email: Optional[EmailStr] = None
     role: str
     establecimiento_id: Optional[int] = None
+    vence_en: Optional[datetime] = None   # DEC-73: vencimiento de la cuenta (opcional)
+
+    @field_validator("vence_en")
+    @classmethod
+    def vence_con_zona(cls, v):
+        return _con_zona_chile(v)
 
     @field_validator("role")
     @classmethod
@@ -44,13 +58,6 @@ class CrearUsuarioIn(BaseModel):
             )
         return v
 
-    @field_validator("password")
-    @classmethod
-    def password_seguro(cls, v):
-        if len(v) < 12:
-            raise ValueError("La contraseña debe tener al menos 12 caracteres")
-        return v
-
 
 class ActualizarUsuarioIn(BaseModel):
     nombre_completo: Optional[str] = Field(None, min_length=2, max_length=255)
@@ -58,7 +65,15 @@ class ActualizarUsuarioIn(BaseModel):
     role: Optional[str] = None
     establecimiento_id: Optional[int] = None
     activo: Optional[bool] = None
-    password_nueva: Optional[str] = Field(None, min_length=12)
+    vence_en: Optional[datetime] = None   # DEC-73: null quita el vencimiento
+    # DEC-73: ya no se acepta (responde 400); la contraseña de otra persona solo se
+    # fija con «Restablecer contraseña».
+    password_nueva: Optional[str] = None
+
+    @field_validator("vence_en")
+    @classmethod
+    def vence_con_zona(cls, v):
+        return _con_zona_chile(v)
 
     @field_validator("role")
     @classmethod
@@ -78,6 +93,8 @@ class UsuarioOut(BaseModel):
     activo: bool
     created_at: datetime
     ultimo_login: Optional[datetime] = None
+    vence_en: Optional[datetime] = None               # DEC-73
+    debe_cambiar_password: Optional[bool] = None      # DEC-73
 
 
 # ── Helper de autorización ────────────────────────────────────
@@ -136,17 +153,24 @@ async def crear_usuario(
     if existe:
         raise HTTPException(409, f"El username '{body.username}' ya existe.")
 
+    # DEC-73: política de contraseñas y vencimiento
+    validar_password_nueva(body.password, body.username)
+    if body.vence_en is not None and body.vence_en <= datetime.now(timezone.utc):
+        raise HTTPException(400, "La fecha de vencimiento debe ser futura.")
+
     row = await conn.fetchrow(
         """
         INSERT INTO kedas_usuarios
-            (username, password_hash, nombre_completo, email, role, establecimiento_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (username, password_hash, nombre_completo, email, role, establecimiento_id,
+             debe_cambiar_password, vence_en)
+        VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)
         RETURNING id, username, nombre_completo, email, role,
-                  establecimiento_id, activo, created_at, ultimo_login
+                  establecimiento_id, activo, created_at, ultimo_login,
+                  vence_en, debe_cambiar_password
         """,
         body.username, hashear_password(body.password),
         body.nombre_completo, body.email,
-        body.role, body.establecimiento_id,
+        body.role, body.establecimiento_id, body.vence_en,
     )
     await _audit(conn, usuario, "crear", body.username, "exito")
     logger.info("Usuario creado: %s rol=%s por actor=%s",
@@ -191,7 +215,8 @@ async def listar_usuarios(
 
     rows = await conn.fetch(f"""
         SELECT id, username, nombre_completo, email, role,
-               establecimiento_id, activo, created_at, ultimo_login
+               establecimiento_id, activo, created_at, ultimo_login,
+               vence_en, debe_cambiar_password
         FROM kedas_usuarios
         {where_sql}
         ORDER BY role, username
@@ -235,13 +260,17 @@ async def actualizar_usuario(
     params = []
     idx = 1
 
-    for campo, valor in body.model_dump(exclude_unset=True).items():
-        if campo == "password_nueva":
-            sets.append(f"password_hash = ${idx}")
-            params.append(hashear_password(valor))
-        else:
-            sets.append(f"{campo} = ${idx}")
-            params.append(valor)
+    cambios = body.model_dump(exclude_unset=True)
+    # DEC-73: la contraseña de otra persona solo se fija con «Restablecer contraseña»
+    if "password_nueva" in cambios:
+        raise HTTPException(400, "Para cambiar la contraseña de otra persona use «Restablecer "
+                                 "contraseña»: genera una temporal y obliga a cambiarla al ingresar.")
+    if cambios.get("vence_en") is not None and cambios["vence_en"] <= datetime.now(timezone.utc):
+        raise HTTPException(400, "La fecha de vencimiento debe ser futura.")
+
+    for campo, valor in cambios.items():
+        sets.append(f"{campo} = ${idx}")
+        params.append(valor)
         idx += 1
 
     if not sets:
@@ -253,7 +282,8 @@ async def actualizar_usuario(
         SET {', '.join(sets)}, updated_at = NOW()
         WHERE id = ${idx}
         RETURNING id, username, nombre_completo, email, role,
-                  establecimiento_id, activo, created_at, ultimo_login
+                  establecimiento_id, activo, created_at, ultimo_login,
+                  vence_en, debe_cambiar_password
     """, *params)
 
     await _audit(conn, usuario, "actualizar", target["username"],
@@ -323,16 +353,17 @@ async def reset_password(
     ):
         raise HTTPException(403, "No autorizado.")
 
-    nueva = secrets.token_urlsafe(16)[:16]
+    nueva = secrets.token_urlsafe(15)   # DEC-73: 20 caracteres aleatorios
     await conn.execute(
-        "UPDATE kedas_usuarios SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+        "UPDATE kedas_usuarios SET password_hash = $1, debe_cambiar_password = TRUE, "
+        "updated_at = NOW() WHERE id = $2",
         hashear_password(nueva), user_id
     )
     await _audit(conn, usuario, "reset_password", target["username"], "exito")
     return {
         "username": target["username"],
         "password_temporal": nueva,
-        "aviso": "Mostrar SOLO una vez. Pedir al usuario que la cambie al primer login.",
+        "aviso": "Mostrar SOLO una vez. La persona deberá cambiarla al ingresar (DEC-73).",
     }
 
 
