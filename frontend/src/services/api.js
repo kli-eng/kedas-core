@@ -190,43 +190,10 @@ export const crearSolicitudARCO = (data) => request("/apoderado/arco", {
 });
 export const listarSolicitudesARCO = () => request("/apoderado/arco");
 
-// === Panel Admin SLEP — S5-02 ===
-export const listarEstablecimientosSlep = () => request("/admin/slep/establecimientos");
-export const listarUsuariosSlep = () => request("/admin/slep/usuarios");
-export const crearUsuarioSlep = (data) => request("/admin/slep/usuarios", {
-  method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(data)
-});
 
 export const verificarPseudonimo = (hash_id) =>
   request(`/pseudonimos/verificar/${hash_id}`);
 
-// === NUEVO v3.1.0 — Reporte SLEP MM 2026 PDF (G-11) ===
-export async function descargarReporteSLEP(establecimiento_id, periodo_dias = 90) {
-  const token = getToken();
-  const res = await fetch(
-    `${API_BASE}/reportes/slep-mm2026/${establecimiento_id}?periodo_dias=${periodo_dias}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`No se pudo generar el reporte: ${body || res.statusText}`);
-  }
-  // Trigger download
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const filename =
-    res.headers.get("Content-Disposition")?.match(/filename="?([^"]+)"?/)?.[1] ||
-    `slep_mm2026_est${establecimiento_id}.pdf`;
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.URL.revokeObjectURL(url);
-}
 
 // === Health ===
 export const healthCheck = () =>
