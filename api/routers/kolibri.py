@@ -50,6 +50,10 @@ async def get_kolibri_datos(
     usuario: TokenData = Depends(obtener_usuario_actual),
     conn: asyncpg.Connection = Depends(get_db),
 ):
+    # Aislamiento entre establecimientos: solo admin consulta otro establecimiento.
+    if usuario.rol != "admin" and establecimiento_id != usuario.establecimiento_id:
+        raise HTTPException(403, "No tiene permiso para ver datos Kolibri de un establecimiento distinto al suyo.")
+
     row = await conn.fetchrow(
         "SELECT datos, actualizado_at FROM kedas_kolibri_cache WHERE establecimiento_id = $1",
         establecimiento_id,
@@ -173,6 +177,10 @@ async def get_kolibri_online(
     y recursos_unicos vienen de kedas_kolibri_online (interacciones
     crudas, 58 filas) — son métricas distintas y ambas correctas.
     """
+    # Aislamiento entre establecimientos: solo admin consulta otro establecimiento.
+    if usuario.rol != "admin" and establecimiento_id != usuario.establecimiento_id:
+        raise HTTPException(403, "No tiene permiso para ver datos Kolibri de un establecimiento distinto al suyo.")
+
     row = await conn.fetchrow(
         """
         SELECT

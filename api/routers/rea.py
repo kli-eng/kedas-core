@@ -158,6 +158,12 @@ async def obtener_rea(
     row = await conn.fetchrow("SELECT * FROM kedas_rea WHERE id = $1 AND activo = TRUE", rea_id)
     if not row:
         raise HTTPException(status_code=404, detail="REA no encontrado")
+    # Respeta la visibilidad elegida por quien creó el REA (mismo criterio que listar_rea):
+    # visible si es del propio establecimiento o si su visibilidad es slep/publico.
+    if (usuario.rol != ROL_ADMIN
+            and row["establecimiento_id"] != usuario.establecimiento_id
+            and row["visibilidad"] not in ("slep", "publico")):
+        raise HTTPException(status_code=403, detail="No tiene permiso para ver este REA.")
     await conn.execute("UPDATE kedas_rea SET vistas = vistas + 1 WHERE id = $1", rea_id)
     return _row_to_rea(row)
 
@@ -194,6 +200,10 @@ async def toggle_autor_display(
     row = await conn.fetchrow("SELECT * FROM kedas_rea WHERE id = $1 AND activo = TRUE", rea_id)
     if not row:
         raise HTTPException(status_code=404, detail="REA no encontrado")
+    # Modificar la atribución del autor queda restringido al establecimiento dueño,
+    # sin importar la visibilidad del recurso.
+    if usuario.rol != ROL_ADMIN and row["establecimiento_id"] != usuario.establecimiento_id:
+        raise HTTPException(status_code=403, detail="No tiene permiso para modificar este REA.")
     nuevo = "nombre_completo" if row["autor_display"] == "establecimiento" else "establecimiento"
     updated = await conn.fetchrow("UPDATE kedas_rea SET autor_display = $1 WHERE id = $2 RETURNING *", nuevo, rea_id)
     return _row_to_rea(updated)

@@ -231,6 +231,27 @@ def verificar_permiso(permiso: str):
     return _check
 
 
+async def exigir_estudiante_del_establecimiento(conn, usuario, hash_id,
+                                               permitir_inexistente=False) -> None:
+    """Verifica que el estudiante (hash_id) pertenezca al establecimiento del usuario.
+    Responde 404 (no 403) para no revelar si el estudiante existe en otro establecimiento."""
+    if usuario.rol == "admin":
+        return
+    est = await conn.fetchval(
+        "SELECT establecimiento_id FROM kedas_pseudonimos WHERE hash_id = $1", hash_id
+    )
+    if est is None:
+        if permitir_inexistente:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Estudiante no encontrado."
+        )
+    if usuario.establecimiento_id is None or int(est) != int(usuario.establecimiento_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Estudiante no encontrado."
+        )
+
+
 
 # ============================================================
 # Sección anexada desde auth_patch.py (cierra G-01)

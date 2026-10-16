@@ -31,6 +31,7 @@ from pydantic import BaseModel
 import asyncpg
 
 from api.routers.auth import TokenData, verificar_permiso, hash_actor_id
+from api.routers.auth import exigir_estudiante_del_establecimiento
 
 logger = logging.getLogger("kedas.estudiantes")
 router = APIRouter()
@@ -155,6 +156,7 @@ async def obtener_progreso_estudiante(
     Sin cambios respecto a Premium -- ya era Core-safe (solo usa
     kedas_interacciones_kolibri, tabla Core).
     """
+    await exigir_estudiante_del_establecimiento(conn, usuario, hash_id)
     resultado = await conn.fetchrow("""
         SELECT
             COUNT(*) AS interacciones_total,
