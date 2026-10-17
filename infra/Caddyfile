@@ -7,7 +7,6 @@
 #
 # ADAPTADO 29-jul-2026 (DEC-59) desde el Caddyfile de Premium:
 # - Dominio configurable vía variable de entorno KEDAS_DOMINIO
-#   (Premium lo tenía fijo: kedas-demo.duckdns.org)
 # - Sin /mlflow/* ni /grafana/* -- ambos servicios son exclusivos
 #   de Premium y no existen en el compose de Core.
 # ============================================================

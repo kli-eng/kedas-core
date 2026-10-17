@@ -1,7 +1,7 @@
 -- ============================================================
 -- Migración 009b — fn_set_updated_at()
 --
--- Funcion trigger generica, usada por 010_kedas_slep_rea.sql (trigger
+-- Funcion trigger generica, usada por 010a_kedas_slep_rea.sql (trigger
 -- trg_rea_updated sobre kedas_rea) y posiblemente otras tablas. Existia
 -- en produccion pero nunca quedo en ninguna migracion versionada —
 -- mismo patron que actualizar_timestamp() (ver 001_schema_fundacional.sql).

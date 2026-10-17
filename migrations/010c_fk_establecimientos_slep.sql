@@ -1,6 +1,6 @@
 -- ============================================================
 -- Migracion 010c — FK kedas_establecimientos -> kedas_slep
--- Debe aplicarse DESPUES de 010_kedas_slep_rea.sql (que crea kedas_slep).
+-- Debe aplicarse DESPUES de 010a_kedas_slep_rea.sql (que crea kedas_slep).
 -- Separada de 001_schema_fundacional.sql porque kedas_slep no existe
 -- en ese punto de la secuencia de instalacion desde cero.
 -- ============================================================

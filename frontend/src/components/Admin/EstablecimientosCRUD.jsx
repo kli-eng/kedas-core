@@ -94,7 +94,7 @@ function EstablecimientoModal({ estab, onClose, onSave }) {
                      onChange={e => set("codigo_rbd", e.target.value)}
                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm
                                 focus:outline-none focus:ring-2 focus:ring-kedas-primary/30"
-                     placeholder="Ej: 1490" />
+                     placeholder="Ej: 12345" />
             </div>
           )}
 
@@ -107,7 +107,7 @@ function EstablecimientoModal({ estab, onClose, onSave }) {
                    onChange={e => set("nombre", e.target.value)}
                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm
                               focus:outline-none focus:ring-2 focus:ring-kedas-primary/30"
-                   placeholder="Ej: Escuela Quebrada de Alvarado" />
+                   placeholder="Ej: Escuela Básica Los Ejemplos" />
           </div>
 
           {/* Región */}

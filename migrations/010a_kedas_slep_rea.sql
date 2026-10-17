@@ -1,9 +1,11 @@
 -- ============================================================
--- KEDAS v3.2.0 — Migración 010: SLEP + REA catalog
+-- KEDAS v3.2.0 — Migración 010a: SLEP + REA catalog
 -- Fecha: 10-jun-2026
 -- Aplica con:
 --   docker exec -i kedas-postgres psql -U kedas -d kedas_db \
---     < migrations/010_kedas_slep_rea.sql
+--     < migrations/010a_kedas_slep_rea.sql
+-- La tabla kedas_slep se crea vacía: cada instalación registra sus
+-- propios SLEP (no se incluyen datos de ninguna instalación real).
 -- Rollback: ver sección ROLLBACK al final
 -- ============================================================
 
@@ -21,11 +23,6 @@ CREATE TABLE IF NOT EXISTS kedas_slep (
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Seed: SLEP Olmué (piloto actual, región V)
-INSERT INTO kedas_slep (nombre, codigo, region, activo)
-VALUES ('SLEP Costa Pacífico', 'SLEP-COSTA-PACIFICO', 'Valparaíso', TRUE)
-ON CONFLICT (codigo) DO NOTHING;
-
 -- ------------------------------------------------------------
 -- 2. FK slep_id en kedas_establecimientos
 -- ------------------------------------------------------------
@@ -34,11 +31,6 @@ ALTER TABLE kedas_establecimientos
 
 CREATE INDEX IF NOT EXISTS idx_estab_slep
     ON kedas_establecimientos(slep_id);
-
--- Vincular establecimiento piloto Olmué (id=3, RBD 1490) al SLEP
-UPDATE kedas_establecimientos
-SET    slep_id = (SELECT id FROM kedas_slep WHERE codigo = 'SLEP-COSTA-PACIFICO')
-WHERE  id = 3;
 
 -- ------------------------------------------------------------
 -- 3. kedas_rea
@@ -131,17 +123,17 @@ BEGIN
           AND column_name = 'slep_id'
     ) INTO v_fk_exists;
 
-    RAISE NOTICE '--- Migración 010 verificación ---';
+    RAISE NOTICE '--- Migración 010a verificación ---';
     RAISE NOTICE 'kedas_slep rows     : %', v_slep_count;
     RAISE NOTICE 'kedas_rea exists    : %', v_rea_exists;
     RAISE NOTICE 'kedas_rea_kudos     : %', v_kudos_exists;
     RAISE NOTICE 'slep_id FK en estab.: %', v_fk_exists;
 
-    IF NOT (v_rea_exists AND v_kudos_exists AND v_fk_exists AND v_slep_count >= 1) THEN
+    IF NOT (v_rea_exists AND v_kudos_exists AND v_fk_exists) THEN
         RAISE EXCEPTION 'Verificación fallida — haciendo rollback';
     END IF;
 
-    RAISE NOTICE '✓ Migración 010 completada correctamente';
+    RAISE NOTICE '✓ Migración 010a completada correctamente';
 END $$;
 
 COMMIT;

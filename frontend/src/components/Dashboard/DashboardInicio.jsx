@@ -161,7 +161,7 @@ export default function DashboardInicio({ user }) {
 
   const nombreRol = esUTP ? "Jefatura UTP" : "Dirección";
   const nombre = user?.nombre_completo?.split(" ")[0] || nombreRol;
-  const establecimiento = datos?.nombre_establecimiento || "Escuela Quebrada de Alvarado";
+  const establecimiento = datos?.nombre_establecimiento || "Establecimiento";
   const hoy = new Date().toLocaleDateString("es-CL", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   // Valores de los indicadores

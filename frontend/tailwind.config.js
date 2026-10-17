@@ -5,7 +5,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Paleta institucional KEDAS — azul KLI (#1e3a8a) y verde Olmué (#10B981)
+        // Paleta institucional KEDAS — azul KLI (#1e3a8a) y verde (#10B981)
         kedas: {
           primary:   "#1e3a8a",
           secondary: "#10B981",

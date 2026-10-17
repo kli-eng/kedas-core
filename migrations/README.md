@@ -12,26 +12,33 @@ sola tabla. Se reconstruyó extrayendo el subconjunto de 12 tablas que
 `rea.py` realmente necesitan, filtrando la migración fundacional ya
 validada en el repo Premium (`kedas/migrations/001_schema_fundacional.sql`).
 
-## ⚠️ IMPORTANTE: no usar `sort -V` para aplicar estas migraciones
+## Orden de aplicación
 
-`010_kedas_slep_rea.sql`, `010b_fix_slep_nombre_establecimiento.sql` y
-`010c_fk_establecimientos_slep.sql` NO se ordenan correctamente con
-`ls migrations/*.sql | sort -V` — `010b` y `010c` terminan antes que
-`010`, y fallan porque `kedas_slep` todavía no existe. Aplicar siempre
-en el orden EXPLÍCITO de la lista de abajo.
-
-## Orden real de instalación (validado)
+Los nombres de archivo ya ordenan correctamente, tanto con `sort -V`
+como con `LC_ALL=C sort` (009 y 010 se renombraron a 009a y 010a el
+17-oct-2026). `scripts/install.sh` las aplica en ese orden y se detiene
+ante el primer error (`ON_ERROR_STOP`).
 
 ```
 001_schema_fundacional.sql
 004_kedas_usuarios.sql
 008_kedas_kolibri_cache.sql
-009_kedas_interacciones_kolibri.sql
+009a_kedas_interacciones_kolibri.sql
 009b_fn_set_updated_at.sql
-010_kedas_slep_rea.sql
-010b_fix_slep_nombre_establecimiento.sql
+010a_kedas_slep_rea.sql
 010c_fk_establecimientos_slep.sql
+011_credenciales.sql
 ```
+
+`kedas_slep` se crea vacía: Core no incluye datos de ninguna
+instalación real. (La antigua `010b`, que corregía el nombre de un
+SLEP en una base existente, se retiró porque no aplica a instalaciones
+nuevas.)
+
+El instalador aplica estas migraciones solo sobre una base vacía. Si la
+base ya tiene `kedas_usuarios`, no aplica ninguna y avisa: las
+migraciones nuevas de una base existente se aplican a mano, una por
+una, con respaldo previo.
 
 ## Tablas resultantes (12 + 1 sin uso)
 
@@ -51,6 +58,5 @@ inofensiva, no es una fuga de Premium.
   historial de git — se perdieron en algún squash+force-push de DEC-43,
   sin dejar rastro). Decidir si reconstruirlos con la misma sofisticación
   original o con un diseño más simple. Ver DEC-59.
-- Probar `install.sh` de kedas-core end-to-end contra estas migraciones
-  (hoy solo se probó aplicando los .sql directo con psql, no a través
-  del script de instalación real).
+- Registrar las migraciones aplicadas en una tabla propia, para poder
+  aplicar solo las nuevas en una base existente.

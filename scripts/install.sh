@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ============================================================
-# KEDAS v3.4.0 — Script de Instalación (perfil Urbano)
+# KEDAS v3.4.0 Core — Script de Instalación
 # Archivo: scripts/install.sh
-# Reescrito 14-jul-2026 (INST-01b) — reemplaza la versión v3.0
-# que describía servicios que nunca existieron en producción real
-# (kedas-kolibri como container, MinIO, Grafana, Metabase, Keycloak).
+# Reescrito 14-jul-2026 (INST-01b); corregido 17-oct-2026 tras la
+# primera instalación completa en un servidor limpio.
 #
-# Arquitectura verificada contra el VPS de producción real (Contabo):
-#   - Kolibri corre en el HOST como servicio systemd/init.d — NUNCA en Docker
-#   - 6 containers: kedas-caddy, kedas-frontend, kedas-api, kedas-postgres,
-#     kedas-ollama, kedas-mlflow
-#   - Backup: Restic -> Backblaze B2 (offsite real, no MinIO local)
-#   - Sin Grafana/Prometheus/MinIO — simplificación intencional, no brecha
+# Arquitectura de Core:
+#   - Kolibri corre en el HOST como servicio systemd — NUNCA en Docker
+#   - 4 contenedores (docker-compose.yml): kedas-postgres, kedas-api,
+#     kedas-frontend, kedas-caddy
+#   - Backup: Restic -> Backblaze B2, se configura aparte
+#   - Crea el administrador inicial con una contraseña temporal que debe
+#     cambiarse en el primer ingreso
 #
 # Compatible con: Ubuntu Server 22.04 LTS, 24.04 LTS
 # Uso: sudo bash scripts/install.sh --perfil urbano [--silencioso] [--dominio kedas.midominio.cl]
@@ -31,7 +31,7 @@ KEDAS_HOME="/opt/kedas"
 KEDAS_USER="kedas-admin"
 LOG_FILE="/var/log/kedas_install.log"
 REPO_URL="https://github.com/kli-eng/kedas-core.git"
-KOLIBRI_VERSION="0.19.4"
+KOLIBRI_VERSION="0.19.5"
 SSH_PORT="2222"
 PERFILES_VALIDOS=("rural-extremo" "rural" "urbano" "slep-multitenant")
 
@@ -94,8 +94,8 @@ check_fail() { RESULTADOS_CHECK+=("FAIL: $1"); }
 mostrar_banner() {
 cat << 'BANNER'
 ╔══════════════════════════════════════════════════════════╗
-║        KEDAS v3.4.0 — Instalación (Perfil Urbano)        ║
-║      Kolibri Educational Data AI System                  ║
+║          KEDAS v3.4.0 Core — Instalación                 ║
+║      Plataforma de Inteligencia Escolar (AGPL v3)        ║
 ║      Kairós Learning Intelligent (KLI) — 2026            ║
 ╚══════════════════════════════════════════════════════════╝
 BANNER
@@ -126,9 +126,9 @@ verificar_sistema_operativo() {
 }
 
 verificar_hardware_minimo() {
-    info "Verificando hardware mínimo (perfil Urbano: 6 núcleos, 12GB RAM recomendado)..."
+    info "Verificando hardware mínimo (perfil: $PERFIL)..."
     RAM_GB=$(awk '/MemTotal/ {printf "%.0f\n", $2/1024/1024}' /proc/meminfo)
-    [[ $RAM_GB -ge 8 ]] && log "RAM: ${RAM_GB}GB" || warn "RAM: ${RAM_GB}GB — se recomienda mínimo 8GB (Ollama + Postgres + servicios)."
+    [[ $RAM_GB -ge 4 ]] && log "RAM: ${RAM_GB}GB" || warn "RAM: ${RAM_GB}GB — se recomiendan al menos 4GB (PostgreSQL, API, Kolibri)."
     DISCO_GB=$(df -BG "$KEDAS_HOME" 2>/dev/null | awk 'NR==2 {gsub("G",""); print $4}' || df -BG / | awk 'NR==2 {gsub("G",""); print $4}')
     [[ $DISCO_GB -ge 30 ]] && log "Espacio libre: ${DISCO_GB}GB" || warn "Espacio libre: ${DISCO_GB}GB — se recomiendan al menos 30GB."
     log "CPUs disponibles: $(nproc)"
@@ -170,13 +170,23 @@ configurar_firewall() {
     ufw --force reset >> "$LOG_FILE" 2>&1
     ufw default deny incoming >> "$LOG_FILE" 2>&1
     ufw default allow outgoing >> "$LOG_FILE" 2>&1
-    ufw limit ${SSH_PORT}/tcp comment "SSH custom port - rate limited" >> "$LOG_FILE" 2>&1
+    # Se abren los puertos en que SSH escucha HOY, además de ${SSH_PORT}:
+    # abrir solo ${SSH_PORT} sin haber cambiado sshd dejaba el servidor sin
+    # acceso remoto al cerrar la sesión (prueba en servidor limpio, 16-oct-2026).
+    PUERTOS_SSH=$(sshd -T 2>/dev/null | awk '$1=="port" {print $2}' | sort -u)
+    [[ -n "$PUERTOS_SSH" ]] || PUERTOS_SSH="22"
+    for puerto in $PUERTOS_SSH ${SSH_PORT}; do
+        ufw limit "${puerto}/tcp" comment "SSH - rate limited" >> "$LOG_FILE" 2>&1
+    done
     ufw allow 80/tcp  comment "HTTP para nginx/Caddy + ACME http-01" >> "$LOG_FILE" 2>&1
     ufw allow 443/tcp comment "HTTPS para Caddy KEDAS+Kolibri" >> "$LOG_FILE" 2>&1
     ufw allow 8080/tcp comment "Kolibri directo" >> "$LOG_FILE" 2>&1
     ufw --force enable >> "$LOG_FILE" 2>&1
-    log "Firewall configurado: ${SSH_PORT} (SSH, rate-limited), 80, 443, 8080."
-    warn "IMPORTANTE: cambiar el puerto SSH del sistema a ${SSH_PORT} en /etc/ssh/sshd_config si aún no se hizo."
+    log "Firewall configurado: SSH en $(echo $PUERTOS_SSH ${SSH_PORT} | tr ' ' '\n' | sort -u | tr '\n' ' ')(rate-limited), 80, 443, 8080."
+    if ! grep -qx "${SSH_PORT}" <<< "$PUERTOS_SSH"; then
+        warn "SSH escucha hoy en: $(echo $PUERTOS_SSH). Se dejaron abiertos para no perder el acceso."
+        warn "Si cambia SSH a ${SSH_PORT}, cierre después el puerto anterior con: ufw delete limit <puerto>/tcp"
+    fi
 }
 
 configurar_fail2ban() {
@@ -250,15 +260,16 @@ instalar_kolibri_host() {
         log "Servicio kolibri ya habilitado."
     else
         info "Creando servicio systemd de Kolibri (hallazgo real, probado en VPS desechable, 21-sep-2026)..."
-        cat > /etc/systemd/system/kolibri.service << 'KOLIBRISVCEOF'
+        KOLIBRI_HOME_DIR="$(getent passwd "$KEDAS_USER" | cut -d: -f6)/.kolibri"
+        cat > /etc/systemd/system/kolibri.service << KOLIBRISVCEOF
 [Unit]
-Description=Kolibri Educational Data AI System
+Description=Kolibri (plataforma de aprendizaje, usada por KEDAS)
 After=network.target
 
 [Service]
 Type=simple
-User=root
-Environment="KOLIBRI_HOME=/root/.kolibri"
+User=${KEDAS_USER}
+Environment="KOLIBRI_HOME=${KOLIBRI_HOME_DIR}"
 ExecStart=/usr/local/bin/kolibri start --port 8080 --foreground
 Restart=on-failure
 RestartSec=10
@@ -291,6 +302,7 @@ configurar_variables_entorno() {
     PSEUDO_SALT=$(openssl rand -hex 24)
     PGCRYPTO_KEY=$(openssl rand -base64 32)
     PG_PASSWORD=$(openssl rand -hex 16)
+    INSTALL_TOKEN=$(openssl rand -hex 32)
 
     if ! $SILENCIOSO && [[ -z "$DOMINIO" ]]; then
         read -rp "Ingrese el dominio del establecimiento (ej: kedas.micolegio.cl): " DOMINIO
@@ -312,6 +324,10 @@ POSTGRES_PASSWORD=${PG_PASSWORD}
 KEDAS_JWT_SECRET=${JWT_SECRET}
 KEDAS_PSEUDONIMO_SALT=${PSEUDO_SALT}
 KEDAS_PGCRYPTO_KEY=${PGCRYPTO_KEY}
+KEDAS_ALLOWED_ORIGINS=https://${DOMINIO}
+
+# Solo para crear el administrador inicial; el instalador lo vacía al terminar.
+KEDAS_INSTALL_TOKEN=${INSTALL_TOKEN}
 EOF
 
     chmod 600 "$ENV_FILE"
@@ -343,20 +359,23 @@ levantar_servicios() {
     info "Paso 6: Levantando servicios Docker..."
     cd "$KEDAS_HOME"
 
-    # docker-compose.urbano.yml declara "kedas-external" como red externa
-    # (external: true) — Compose espera que ya exista, creada por fuera del
-    # compose file. Descubierto en la prueba de despliegue desde cero, DEC-49.
-    docker network create kedas-external 2>/dev/null || true
+    # Core usa solo docker-compose.yml (4 servicios). Los servicios de IA
+    # (Ollama) y MLflow pertenecen a módulos Premium.
+    if ! docker compose -f docker-compose.yml up -d --build >> "$LOG_FILE" 2>&1; then
+        err "No se pudieron levantar los contenedores. Revise $LOG_FILE"
+        exit 1
+    fi
 
-    docker compose \
-        -f docker-compose.yml \
-        -f docker-compose.urbano.yml \
-        up -d postgres api frontend caddy mlflow ollama >> "$LOG_FILE" 2>&1
+    info "Esperando que la API responda (hasta 5 minutos)..."
+    INTENTOS=0
+    until curl -sf --max-time 5 "http://127.0.0.1:8001/health" > /dev/null 2>&1; do
+        INTENTOS=$((INTENTOS+1))
+        [[ $INTENTOS -ge 30 ]] && { err "La API no responde después de 5 minutos. Revise: docker logs kedas-api"; exit 1; }
+        sleep 10
+    done
+    log "API en línea."
 
-    log "Servicios Docker iniciados. Esperando inicialización (30s)..."
-    sleep 30
-
-    SERVICIOS_REQUERIDOS=("kedas-postgres" "kedas-api" "kedas-caddy" "kedas-frontend" "kedas-ollama" "kedas-mlflow")
+    SERVICIOS_REQUERIDOS=("kedas-postgres" "kedas-api" "kedas-caddy" "kedas-frontend")
     for servicio in "${SERVICIOS_REQUERIDOS[@]}"; do
         STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$servicio" 2>/dev/null || echo "sin_healthcheck")
         RUNNING=$(docker inspect --format='{{.State.Running}}' "$servicio" 2>/dev/null || echo "false")
@@ -389,15 +408,103 @@ aplicar_migraciones() {
         return
     fi
 
-    for migracion in $(ls migrations/*.sql 2>/dev/null | sort -V); do
+    # Una base que ya tiene usuarios no se toca: las migraciones de Core no
+    # están pensadas para aplicarse dos veces (la 011 se detiene a propósito).
+    YA_INICIALIZADA=$(docker exec kedas-postgres psql -U kedas -d kedas_db -tAc \
+        "SELECT to_regclass('public.kedas_usuarios') IS NOT NULL" 2>/dev/null || echo "error")
+    if [[ "$YA_INICIALIZADA" == "t" ]]; then
+        warn "La base ya está inicializada (existe kedas_usuarios): no se aplica ninguna migración."
+        warn "Las migraciones nuevas se aplican a mano, una por una, con respaldo previo."
+        return
+    elif [[ "$YA_INICIALIZADA" != "f" ]]; then
+        err "No se pudo consultar el estado de la base."; exit 1
+    fi
+
+    for migracion in $(ls migrations/*.sql 2>/dev/null | LC_ALL=C sort); do
         info "Aplicando: $(basename "$migracion")"
-        docker exec -i kedas-postgres psql -U kedas -d kedas_db < "$migracion" >> "$LOG_FILE" 2>&1
+        if ! docker exec -i kedas-postgres psql -v ON_ERROR_STOP=1 -U kedas -d kedas_db \
+                < "$migracion" >> "$LOG_FILE" 2>&1; then
+            err "Falló la migración $(basename "$migracion"). La instalación se detiene."
+            err "Detalle en $LOG_FILE"
+            exit 1
+        fi
     done
 
     log "Migraciones Core aplicadas."
     warn "Este servidor NO tiene módulos Premium instalados (Convivencia avanzada,"
     warn "Inteligencia Curricular, KIRA, Predicciones, Reportes SLEP) — para activarlos"
     warn "se requiere una licencia comercial KLI y el instalador de kedas."
+}
+
+# ══════════════════════════════════════════════════════════════
+# PASO 7b — ADMINISTRADOR INICIAL
+# ══════════════════════════════════════════════════════════════
+
+crear_admin_inicial() {
+    info "Paso 7b: Creando el administrador inicial..."
+    cd "$KEDAS_HOME"
+    source "$KEDAS_HOME/.env"
+    if [[ -z "${KEDAS_INSTALL_TOKEN:-}" ]]; then
+        warn "KEDAS_INSTALL_TOKEN está vacío: el administrador inicial ya se creó en una instalación anterior."
+        return
+    fi
+
+    ADMIN_USER="admin"
+    if ! $SILENCIOSO; then
+        read -rp "Nombre de usuario del administrador [admin]: " resp
+        ADMIN_USER="${resp:-admin}"
+    fi
+    if [[ ! "$ADMIN_USER" =~ ^[a-z0-9._-]{3,64}$ ]]; then
+        err "Nombre de usuario no válido: use de 3 a 64 caracteres en minúscula, números, punto, guion o guion bajo."
+        exit 1
+    fi
+
+    # Contraseña temporal aleatoria de 20 caracteres. No se muestra ni va al
+    # log: queda solo en el archivo de credenciales de /root (permisos 600).
+    # La API obliga a cambiarla en el primer ingreso (DEC-73).
+    HDR=$(mktemp); RESP=$(mktemp); chmod 600 "$HDR" "$RESP"
+    printf 'X-Install-Token: %s\n' "$KEDAS_INSTALL_TOKEN" > "$HDR"
+    CODIGO=""
+    for _ in 1 2 3; do
+        ADMIN_PW=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 20)
+        CODIGO=$(printf '{"username":"%s","password":"%s","nombre_completo":"Administrador KEDAS"}' \
+                     "$ADMIN_USER" "$ADMIN_PW" | \
+                 curl -s -o "$RESP" -w '%{http_code}' --max-time 20 \
+                     -H "Content-Type: application/json" -H @"$HDR" --data-binary @- \
+                     "http://127.0.0.1:8001/api/v1/auth/init-admin" || true)
+        [[ "$CODIGO" == "400" ]] || break   # 400 = la contraseña generada no pasó la política; se genera otra
+    done
+    rm -f "$HDR"
+
+    case "$CODIGO" in
+        201)
+            CRED_FILE=$(ls -t /root/kedas_credenciales_*.txt 2>/dev/null | head -1 || true)
+            [[ -n "$CRED_FILE" ]] || { CRED_FILE="/root/kedas_credenciales_$(date +%Y%m%d).txt"; install -m 600 /dev/null "$CRED_FILE"; }
+            {
+                echo ""
+                echo "Administrador inicial de KEDAS"
+                echo "  Usuario:               ${ADMIN_USER}"
+                echo "  Contraseña temporal:   ${ADMIN_PW}"
+                echo "  Al entrar por primera vez, KEDAS pide elegir una contraseña nueva"
+                echo "  (al menos 15 caracteres). Borre este archivo después de anotarla."
+            } >> "$CRED_FILE"
+            log "Administrador '${ADMIN_USER}' creado. Contraseña temporal en: $CRED_FILE"
+            ;;
+        409) warn "Ya existe un administrador: no se creó otro." ;;
+        *)   err "No se pudo crear el administrador (HTTP $CODIGO). Respuesta: $(head -c 300 "$RESP")"
+             rm -f "$RESP"; unset ADMIN_PW; exit 1 ;;
+    esac
+    rm -f "$RESP"; unset ADMIN_PW
+
+    # Cierra init-admin: vacía el token y recrea la API para que lo pierda.
+    sed -i 's/^KEDAS_INSTALL_TOKEN=.*/KEDAS_INSTALL_TOKEN=/' "$KEDAS_HOME/.env"
+    docker compose -f docker-compose.yml up -d --force-recreate api >> "$LOG_FILE" 2>&1
+    INTENTOS=0
+    until curl -sf --max-time 5 "http://127.0.0.1:8001/health" > /dev/null 2>&1; do
+        INTENTOS=$((INTENTOS+1)); [[ $INTENTOS -ge 18 ]] && { warn "La API tarda en volver tras el reinicio."; break; }
+        sleep 10
+    done
+    log "Token de instalación retirado; init-admin queda cerrado."
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -471,8 +578,8 @@ verificacion_final() {
     echo -e "  ${BLUE}[INFO]${NC} 8. Tablas KEDAS Core presentes: $TABLAS (perfil: $PERFIL)"
 
     echo ""
-    PASS_COUNT=$(printf '%s\n' "${RESULTADOS_CHECK[@]}" | grep -c "^PASS" || echo 0)
-    FAIL_COUNT=$(printf '%s\n' "${RESULTADOS_CHECK[@]}" | grep -c "^FAIL" || echo 0)
+    PASS_COUNT=$(printf '%s\n' "${RESULTADOS_CHECK[@]}" | grep -c "^PASS" || true)
+    FAIL_COUNT=$(printf '%s\n' "${RESULTADOS_CHECK[@]}" | grep -c "^FAIL" || true)
     if [[ $FAIL_COUNT -eq 0 ]]; then
         echo -e "${GREEN}${BOLD}  INSTALACIÓN EXITOSA: $PASS_COUNT/7 verificaciones PASS${NC}"
     else
@@ -482,6 +589,7 @@ verificacion_final() {
     echo -e "${BOLD}══════════════════════════════════════════════════════${NC}"
     echo -e "${BOLD}  Acceso: https://${CADDY_DOMAIN:-kedas.local}${NC}"
     echo -e "  Kolibri: http://IP_DEL_SERVIDOR:8080"
+    echo -e "  Administrador inicial y contraseñas: /root/kedas_credenciales_*.txt (borrar tras anotar)"
     echo -e "  Log: $LOG_FILE"
     echo ""
     warn "PENDIENTE: configurar backup Restic->B2 manualmente (Paso 8) antes de producción real."
@@ -493,7 +601,8 @@ verificacion_final() {
 
 main() {
     mkdir -p "$(dirname "$LOG_FILE")"
-    echo "=== KEDAS v3.4.0 Instalación (kedas-core) — $(date) — Perfil: $PERFIL ===" > "$LOG_FILE"
+    install -m 600 /dev/null "$LOG_FILE"
+    echo "=== KEDAS v3.4.0 Instalación (kedas-core) — $(date) — Perfil: $PERFIL ===" >> "$LOG_FILE"
 
     mostrar_banner
 
@@ -518,6 +627,7 @@ main() {
     configurar_variables_entorno
     levantar_servicios
     aplicar_migraciones
+    crear_admin_inicial
     configurar_backup
     verificacion_final
 

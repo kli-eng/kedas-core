@@ -252,7 +252,7 @@ function REAModal({ rea, onClose }) {
         {/* Acceso al recurso */}
         <div className="flex flex-wrap gap-2 mt-2">
           {(rea.url_externa || rea.kolibri_content_id) && (
-            <a href={rea.url_externa || (rea.kolibri_content_id ? `https://kedas-demo.duckdns.org/es-419/learn/#/topics/c/${rea.kolibri_content_id}` : "#")}
+            <a href={rea.url_externa || (rea.kolibri_content_id ? `/es-419/learn/#/topics/c/${rea.kolibri_content_id}` : "#")}
                target={rea.url_externa || rea.kolibri_content_id ? "_blank" : "_self"}
                rel="noopener noreferrer"
                onClick={(!rea.url_externa && !rea.kolibri_content_id) ? (e) => { e.preventDefault(); alert("Este recurso no tiene URL configurada. Contacta al administrador."); } : undefined}
