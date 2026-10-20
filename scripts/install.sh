@@ -326,6 +326,9 @@ KEDAS_PSEUDONIMO_SALT=${PSEUDO_SALT}
 KEDAS_PGCRYPTO_KEY=${PGCRYPTO_KEY}
 KEDAS_ALLOWED_ORIGINS=https://${DOMINIO}
 
+# Roles que deben usar verificación en dos pasos (app de autenticación en el celular).
+KEDAS_ROLES_MFA=admin,director,slep_tecnico,psicologo,coordinador_convivencia,orientador
+
 # Solo para crear el administrador inicial; el instalador lo vacía al terminar.
 KEDAS_INSTALL_TOKEN=${INSTALL_TOKEN}
 EOF
@@ -487,6 +490,9 @@ crear_admin_inicial() {
                 echo "  Contraseña temporal:   ${ADMIN_PW}"
                 echo "  Al entrar por primera vez, KEDAS pide elegir una contraseña nueva"
                 echo "  (al menos 15 caracteres). Borre este archivo después de anotarla."
+                echo "  Luego KEDAS pide configurar la verificación en dos pasos: instale en su"
+                echo "  celular una app de autenticación (Google Authenticator o Microsoft"
+                echo "  Authenticator) y escanee el código QR que aparece en pantalla."
             } >> "$CRED_FILE"
             log "Administrador '${ADMIN_USER}' creado. Contraseña temporal en: $CRED_FILE"
             ;;

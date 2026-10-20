@@ -38,6 +38,7 @@ services:
       KEDAS_INSTALL_TOKEN:   ${KEDAS_INSTALL_TOKEN}
       KEDAS_PSEUDONIMO_SALT: ${KEDAS_PSEUDONIMO_SALT}
       KEDAS_PGCRYPTO_KEY:    ${KEDAS_PGCRYPTO_KEY}
+      KEDAS_ROLES_MFA:       ${KEDAS_ROLES_MFA:-admin,director,slep_tecnico,psicologo,coordinador_convivencia,orientador}
       KEDAS_ALLOWED_ORIGINS: ${KEDAS_ALLOWED_ORIGINS:-http://localhost:3000}
       KOLIBRI_DATA_PATH:     /opt/kedas/data/kolibri
       LOG_LEVEL:             ${LOG_LEVEL:-INFO}

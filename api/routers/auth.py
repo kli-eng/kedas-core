@@ -43,6 +43,8 @@ class Token(BaseModel):
     rol:          str
     expires_in:   int    # segundos hasta expiración
     debe_cambiar_password: bool = False   # DEC-73: el token solo sirve para cambiarla
+    mfa_requerido: bool = False   # el token solo sirve para /auth/mfa/validar-login
+    mfa_registro:  bool = False   # el token solo sirve para configurar el doble factor
 
 
 class TokenData(BaseModel):
@@ -336,7 +338,7 @@ async def login(
     """
     row = await conn.fetchrow(
         "SELECT id, username, password_hash, role, establecimiento_id, activo, "
-        "debe_cambiar_password, vence_en "
+        "debe_cambiar_password, vence_en, totp_habilitado "
         "FROM kedas_usuarios WHERE username = $1",
         form_data.username,
     )
@@ -385,6 +387,12 @@ async def login(
             expires_in=int(duracion.total_seconds()),
             debe_cambiar_password=True,
         )
+
+    # Segundo factor. Si la cuenta lo exige o lo tiene activo, se entrega un token
+    # intermedio que solo sirve para validar el código o configurarlo.
+    paso_mfa = await _paso_mfa(conn, row, actor_hash, datos_token, ahora)
+    if paso_mfa is not None:
+        return paso_mfa
 
     # DEC-73: el token no dura más que la cuenta
     duracion = timedelta(hours=TOKEN_EXPIRE_H)
@@ -544,10 +552,174 @@ async def me(
             return UsuarioOut(**dict(r))
     raise HTTPException(status_code=404, detail="Usuario del token no encontrado")
 
-# ── MFA / TOTP (B-05) ─────────────────────────────────────────────────────
+# ── MFA / TOTP (B-05) ──────────────────────────────────
+# El doble factor se exige en el login para los roles de KEDAS_ROLES_MFA. Flujo: /token con la contraseña correcta entrega un token intermedio con
+# alcance "mfa_login" (5 min) o, si la cuenta aún no lo configura, "mfa_registro" (10 min);
+# luego /mfa/validar-login, o /mfa/setup + /mfa/verificar, entregan el token normal.
+# obtener_usuario_actual rechaza todo token con alcance, así que el intermedio no abre otras
+# rutas. Un código no se acepta dos veces (RFC 6238 §5.2) y 5 códigos fallidos seguidos
+# bloquean la cuenta 15 minutos (migración 012).
+import time, hmac
 import pyotp, qrcode, io, base64
 
-ROLES_MFA_REQUERIDO = {"admin", "director", "slep_tecnico"}
+ALCANCE_MFA_LOGIN      = "mfa_login"
+ALCANCE_MFA_REGISTRO   = "mfa_registro"
+TOKEN_MFA_LOGIN_MIN    = 5
+TOKEN_MFA_REGISTRO_MIN = 10
+MFA_MAX_FALLOS         = 5
+MFA_BLOQUEO_MIN        = 15
+MFA_EMISOR             = "KEDAS-KLI"
+_ROLES_MFA_DEFECTO = "admin,director,slep_tecnico,psicologo,coordinador_convivencia,orientador"
+ROLES_SIN_MFA = frozenset({"apoderado"})       # nunca
+
+
+def _roles_mfa() -> frozenset:
+    crudo = os.getenv("KEDAS_ROLES_MFA") or _ROLES_MFA_DEFECTO   # vacía = valor por defecto
+    roles = {r.strip() for r in crudo.split(",") if r.strip()}
+    desconocidos = roles - ROLES_VALIDOS
+    if desconocidos:
+        logger.error("KEDAS_ROLES_MFA tiene roles desconocidos %s; se ignoran",
+                     sorted(desconocidos))
+    return frozenset((roles & ROLES_VALIDOS) - ROLES_SIN_MFA)
+
+
+# Se lee al iniciar el servicio: cambiar KEDAS_ROLES_MFA exige recrear kedas-api.
+ROLES_MFA_REQUERIDO = _roles_mfa()
+
+
+def _llave_pgcrypto() -> str:
+    llave = os.environ.get("KEDAS_PGCRYPTO_KEY", "")
+    if len(llave) < 32:
+        logger.error("KEDAS_PGCRYPTO_KEY falta o es corta; el doble factor no opera")
+        raise HTTPException(status_code=503, detail=(
+            "La verificación en dos pasos no está disponible: falta configurar la llave de "
+            "cifrado. Avise al administrador del sistema."))
+    return llave
+
+
+async def _paso_mfa(conn, row, actor_hash, datos_token, ahora):
+    """Devuelve el Token intermedio si la cuenta debe dar el segundo factor; si no, None."""
+    exige  = row["role"] in ROLES_MFA_REQUERIDO
+    activo = bool(row["totp_habilitado"]) and row["role"] not in ROLES_SIN_MFA
+    if not exige and not activo:
+        return None
+    alcance, minutos = ((ALCANCE_MFA_LOGIN, TOKEN_MFA_LOGIN_MIN) if activo
+                        else (ALCANCE_MFA_REGISTRO, TOKEN_MFA_REGISTRO_MIN))
+    duracion = timedelta(minutes=minutos)
+    if row["vence_en"] is not None:
+        duracion = min(duracion, row["vence_en"] - ahora)
+    token = crear_token({**datos_token, "alcance": alcance}, duracion)
+    logger.info("Login con segundo factor pendiente (%s): actor=%s", alcance, actor_hash)
+    return Token(access_token=token, token_type="bearer", rol=row["role"],
+                 expires_in=int(duracion.total_seconds()),
+                 mfa_requerido=activo, mfa_registro=not activo)
+
+
+def _usuario_con_alcance(*permitidos):
+    """Dependencia que acepta solo tokens con alguno de los alcances indicados
+    (None = token normal). Devuelve el payload del JWT."""
+    async def _dep(token: str = Depends(oauth2_scheme)) -> dict:
+        excepcion = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales inválidas o token expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except JWTError:
+            raise excepcion
+        if (payload.get("alcance") not in permitidos or payload.get("sub") is None
+                or payload.get("rol") not in ROLES_VALIDOS or payload.get("user_id") is None):
+            raise excepcion
+        return payload
+    return _dep
+
+
+async def _cargar_cuenta(conn, payload):
+    row = await conn.fetchrow(
+        "SELECT id, username, role, establecimiento_id, activo, vence_en, totp_secret, "
+        "totp_habilitado, totp_bloqueado_hasta FROM kedas_usuarios WHERE id = $1",
+        payload["user_id"],
+    )
+    if (not row or not row["activo"] or row["role"] != payload["rol"]
+            or hash_actor_id(row["username"]) != payload["sub"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Credenciales inválidas o token expirado",
+                            headers={"WWW-Authenticate": "Bearer"})
+    if row["vence_en"] is not None and row["vence_en"] <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MENSAJE_VENCIDA)
+    return row
+
+
+async def _verificar_codigo(conn, row, codigo: str, actor_hash: str, accion: str) -> None:
+    """Acepta el código del paso anterior, el actual o el siguiente (±30 s), una sola vez.
+    Cuenta los fallos seguidos y bloquea la cuenta al llegar a MFA_MAX_FALLOS."""
+    ahora = datetime.now(timezone.utc)
+    bloqueo = row["totp_bloqueado_hasta"]
+    if bloqueo is not None and bloqueo > ahora:
+        await _auditar_auth(conn, actor_hash, row["role"], accion, "rechazado: cuenta bloqueada")
+        raise HTTPException(status_code=429, detail=(
+            f"Demasiados códigos incorrectos. Espere {MFA_BLOQUEO_MIN} minutos e intente de nuevo."))
+    if bloqueo is not None:   # el bloqueo anterior ya venció: se parte de cero
+        await conn.execute("UPDATE kedas_usuarios SET totp_fallos = 0, totp_bloqueado_hasta = NULL "
+                           "WHERE id = $1", row["id"])
+
+    codigo = (codigo or "").replace(" ", "").strip()
+    secreto = await conn.fetchval(
+        "SELECT pgp_sym_decrypt(totp_secret::bytea, $1) FROM kedas_usuarios WHERE id = $2",
+        _llave_pgcrypto(), row["id"],
+    )
+    paso = None
+    if secreto and len(codigo) == 6 and codigo.isdigit():
+        totp = pyotp.TOTP(secreto)
+        actual = int(time.time()) // totp.interval
+        for p in (actual - 1, actual, actual + 1):
+            if hmac.compare_digest(totp.generate_otp(p), codigo):
+                paso = p
+                break
+    if paso is not None:
+        aceptado = await conn.fetchval(
+            "UPDATE kedas_usuarios SET totp_ultimo_paso = $1, totp_fallos = 0, "
+            "totp_bloqueado_hasta = NULL WHERE id = $2 "
+            "AND (totp_ultimo_paso IS NULL OR totp_ultimo_paso < $1) RETURNING id",
+            paso, row["id"],
+        )
+        if aceptado:
+            return
+        motivo = "código ya usado"
+    else:
+        motivo = "código incorrecto"
+    fallos = await conn.fetchval(
+        "UPDATE kedas_usuarios SET totp_fallos = totp_fallos + 1, "
+        "totp_bloqueado_hasta = CASE WHEN totp_fallos + 1 >= $2 "
+        "THEN NOW() + make_interval(mins => $3) ELSE totp_bloqueado_hasta END "
+        "WHERE id = $1 RETURNING totp_fallos",
+        row["id"], MFA_MAX_FALLOS, MFA_BLOQUEO_MIN,
+    )
+    await _auditar_auth(conn, actor_hash, row["role"], accion,
+                        f"rechazado: {motivo} ({fallos} seguidos)")
+    if fallos >= MFA_MAX_FALLOS:
+        raise HTTPException(status_code=429, detail=(
+            f"Demasiados códigos incorrectos. Espere {MFA_BLOQUEO_MIN} minutos e intente de nuevo."))
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=(
+        "Código incorrecto o ya usado. Espere el siguiente código de la app e intente de nuevo."))
+
+
+async def _token_completo(conn, row) -> Token:
+    """Token normal tras validar el segundo factor (mismos datos que /token)."""
+    ahora = datetime.now(timezone.utc)
+    duracion = timedelta(hours=TOKEN_EXPIRE_H)
+    if row["vence_en"] is not None:
+        duracion = min(duracion, row["vence_en"] - ahora)
+    actor_hash = hash_actor_id(row["username"])
+    token = crear_token({"sub": actor_hash, "rol": row["role"],
+                         "establecimiento_id": row["establecimiento_id"],
+                         "user_id": row["id"]}, duracion)
+    await conn.execute("UPDATE kedas_usuarios SET ultimo_login = NOW() WHERE id = $1", row["id"])
+    logger.info("Login OK con segundo factor: actor=%s rol=%s estab=%s",
+                actor_hash, row["role"], row["establecimiento_id"])
+    return Token(access_token=token, token_type="bearer", rol=row["role"],
+                 expires_in=int(duracion.total_seconds()))
 
 
 class MFASetupResponse(BaseModel):
@@ -560,107 +732,80 @@ class MFAVerificarRequest(BaseModel):
     codigo: str
 
 
-async def _buscar_usuario_por_hash(conn, actor_hash: str):
-    """Retorna (id, username, row) buscando por actor_hash recalculado."""
-    rows = await conn.fetch(
-        "SELECT id, username, totp_secret, totp_habilitado, totp_verificado "
-        "FROM kedas_usuarios WHERE activo=TRUE"
-    )
-    for r in rows:
-        if hash_actor_id(r["username"]) == actor_hash:
-            return r
-    return None
-
-
 @router.post("/mfa/setup", response_model=MFASetupResponse,
-             summary="Genera QR TOTP para activar MFA")
+             summary="Genera el QR para configurar el doble factor")
+@limiter.limit("10/minute")
 async def mfa_setup(
-    usuario: TokenData = Depends(obtener_usuario_actual),
+    request: Request,
+    payload: dict = Depends(_usuario_con_alcance(None, ALCANCE_MFA_REGISTRO)),
     conn:    asyncpg.Connection = Depends(_auth_db),
 ):
-    """Genera un secreto TOTP y devuelve el QR en base64 para escanear
-    con Google Authenticator, Authy o Microsoft Authenticator."""
-    row = await _buscar_usuario_por_hash(conn, usuario.actor_hash)
-    if not row:
-        raise HTTPException(404, "Usuario no encontrado")
-
-    llave  = os.environ.get("KEDAS_PGCRYPTO_KEY", "")
+    """Genera un secreto nuevo solo si el doble factor no está activo. Para cambiar de
+    celular hay que pedir que lo restablezcan (POST /admin/usuarios/{id}/reset-mfa)."""
+    row = await _cargar_cuenta(conn, payload)
+    if row["role"] in ROLES_SIN_MFA:
+        raise HTTPException(403, "Este perfil no usa verificación en dos pasos.")
+    if row["totp_habilitado"]:
+        raise HTTPException(409, (
+            "La verificación en dos pasos ya está activa en esta cuenta. Para cambiar de "
+            "celular, pida a su director o al administrador que la restablezca."))
+    llave  = _llave_pgcrypto()
     secret = pyotp.random_base32()
-
     await conn.execute(
-        "UPDATE kedas_usuarios "
-        "SET totp_secret=pgp_sym_encrypt($1, $2), "
-        "totp_habilitado=FALSE, totp_verificado=FALSE "
-        "WHERE id=$3",
-        secret, llave, row["id"]
+        "UPDATE kedas_usuarios SET totp_secret = pgp_sym_encrypt($1, $2), "
+        "totp_habilitado = FALSE, totp_verificado = FALSE, totp_ultimo_paso = NULL, "
+        "totp_fallos = 0, totp_bloqueado_hasta = NULL WHERE id = $3",
+        secret, llave, row["id"],
     )
-
-    totp  = pyotp.TOTP(secret)
-    uri   = totp.provisioning_uri(name=row["username"], issuer_name="KEDAS-KLI")
-    img   = qrcode.make(uri)
-    buf   = io.BytesIO()
-    img.save(buf, format="PNG")
-    qr_b64 = base64.b64encode(buf.getvalue()).decode()
-
+    await _auditar_auth(conn, payload["sub"], row["role"], "mfa_setup", "secreto generado")
+    uri = pyotp.TOTP(secret).provisioning_uri(name=row["username"], issuer_name=MFA_EMISOR)
+    buf = io.BytesIO()
+    qrcode.make(uri).save(buf, format="PNG")
     return MFASetupResponse(
-        qr_base64=qr_b64,
+        qr_base64=base64.b64encode(buf.getvalue()).decode(),
         secret=secret,
-        mensaje="Escanea el QR con Google Authenticator o Authy. Luego verifica con POST /auth/mfa/verificar"
+        mensaje="Escanee el código QR con la app de autenticación y escriba el código de 6 dígitos.",
     )
 
 
-@router.post("/mfa/verificar", summary="Verifica código TOTP y activa MFA")
+@router.post("/mfa/verificar", summary="Activa el doble factor con el primer código")
+@limiter.limit("10/minute")
 async def mfa_verificar(
+    request: Request,
     body:    MFAVerificarRequest,
-    usuario: TokenData = Depends(obtener_usuario_actual),
+    payload: dict = Depends(_usuario_con_alcance(None, ALCANCE_MFA_REGISTRO)),
     conn:    asyncpg.Connection = Depends(_auth_db),
 ):
-    """Verifica el código de 6 dígitos y activa MFA en la cuenta."""
-    llave = os.environ.get("KEDAS_PGCRYPTO_KEY", "")
-    row   = await _buscar_usuario_por_hash(conn, usuario.actor_hash)
-    if not row or not row["totp_secret"]:
-        raise HTTPException(400, "MFA no configurado. Ejecuta primero POST /auth/mfa/setup")
-
-    secret_plain = await conn.fetchval(
-        "SELECT pgp_sym_decrypt(totp_secret::bytea, $1) "
-        "FROM kedas_usuarios WHERE id=$2",
-        llave, row["id"]
-    )
-    totp  = pyotp.TOTP(secret_plain)
-    valid = totp.verify(body.codigo, valid_window=1)
-    if not valid:
-        raise HTTPException(400, "Código incorrecto o expirado. Intenta de nuevo.")
-
+    """Activa el doble factor. Si se llegó desde el login (token de registro), entrega
+    además el token normal para entrar."""
+    row = await _cargar_cuenta(conn, payload)
+    if row["totp_habilitado"]:
+        raise HTTPException(409, "La verificación en dos pasos ya está activa en esta cuenta.")
+    if not row["totp_secret"]:
+        raise HTTPException(400, "Primero genere el código QR (POST /auth/mfa/setup).")
+    await _verificar_codigo(conn, row, body.codigo, payload["sub"], "mfa_activar")
     await conn.execute(
-        "UPDATE kedas_usuarios "
-        "SET totp_habilitado=TRUE, totp_verificado=TRUE WHERE id=$1",
-        row["id"]
-    )
+        "UPDATE kedas_usuarios SET totp_habilitado = TRUE, totp_verificado = TRUE, "
+        "updated_at = NOW() WHERE id = $1", row["id"])
+    await _auditar_auth(conn, payload["sub"], row["role"], "mfa_activado", "exito")
+    if payload.get("alcance") == ALCANCE_MFA_REGISTRO:
+        return await _token_completo(conn, row)
     return {"status": "ok",
-            "mensaje": "MFA activado correctamente. Se requerirá en el próximo login."}
+            "mensaje": "Verificación en dos pasos activada. Se pedirá en cada ingreso."}
 
 
-@router.post("/mfa/validar-login", summary="Valida código TOTP durante el login (segundo factor)")
+@router.post("/mfa/validar-login", response_model=Token,
+             summary="Valida el código del segundo factor y entrega el token")
+@limiter.limit("10/minute")
 async def mfa_validar_login(
+    request: Request,
     body:    MFAVerificarRequest,
-    usuario: TokenData = Depends(obtener_usuario_actual),
+    payload: dict = Depends(_usuario_con_alcance(ALCANCE_MFA_LOGIN)),
     conn:    asyncpg.Connection = Depends(_auth_db),
 ):
-    """Valida el segundo factor después del login con contraseña."""
-    llave = os.environ.get("KEDAS_PGCRYPTO_KEY", "")
-    row   = await _buscar_usuario_por_hash(conn, usuario.actor_hash)
-    if not row or not row["totp_habilitado"]:
-        raise HTTPException(400, "MFA no está habilitado en esta cuenta.")
-
-    secret_plain = await conn.fetchval(
-        "SELECT pgp_sym_decrypt(totp_secret::bytea, $1) "
-        "FROM kedas_usuarios WHERE id=$2",
-        llave, row["id"]
-    )
-    totp  = pyotp.TOTP(secret_plain)
-    valid = totp.verify(body.codigo, valid_window=1)
-    if not valid:
-        raise HTTPException(401, "Código MFA incorrecto o expirado.")
-
-    return {"status": "ok", "mfa_validado": True,
-            "mensaje": "Segundo factor validado correctamente."}
+    row = await _cargar_cuenta(conn, payload)
+    if not row["totp_habilitado"]:
+        raise HTTPException(400, "La verificación en dos pasos no está activa en esta cuenta.")
+    await _verificar_codigo(conn, row, body.codigo, payload["sub"], "mfa_login")
+    await _auditar_auth(conn, payload["sub"], row["role"], "mfa_login", "exito")
+    return await _token_completo(conn, row)

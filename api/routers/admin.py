@@ -367,6 +367,47 @@ async def reset_password(
     }
 
 
+@router.post(
+    "/usuarios/{user_id}/reset-mfa",
+    summary="Restablecer la verificación en dos pasos"
+)
+async def reset_mfa(
+    user_id: int,
+    usuario: TokenData = Depends(verificar_permiso("estudiantes:leer")),
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    """Borra el secreto TOTP de otra cuenta (celular perdido o cambiado). En su próximo
+    ingreso la persona vuelve a configurarlo. Nadie puede restablecer el propio, y un
+    director solo restablece cuentas de su establecimiento que no sean admin."""
+    _exigir_admin_o_director(usuario)
+    if usuario.user_id is not None and int(usuario.user_id) == int(user_id):
+        raise HTTPException(403, "No puede restablecer su propia verificación en dos pasos; "
+                                 "pídalo a otra persona autorizada.")
+    target = await conn.fetchrow(
+        "SELECT username, role, establecimiento_id FROM kedas_usuarios WHERE id = $1",
+        user_id
+    )
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado.")
+    if usuario.rol == "director" and (
+        target["role"] == "admin" or
+        target["establecimiento_id"] != usuario.establecimiento_id
+    ):
+        raise HTTPException(403, "No autorizado.")
+    await conn.execute(
+        "UPDATE kedas_usuarios SET totp_secret = NULL, totp_habilitado = FALSE, "
+        "totp_verificado = FALSE, totp_ultimo_paso = NULL, totp_fallos = 0, "
+        "totp_bloqueado_hasta = NULL, updated_at = NOW() WHERE id = $1",
+        user_id
+    )
+    await _audit(conn, usuario, "reset_mfa", target["username"], "exito")
+    return {
+        "username": target["username"],
+        "mensaje": "Verificación en dos pasos restablecida. En su próximo ingreso la persona "
+                   "la configurará de nuevo con su celular.",
+    }
+
+
 # ============================================================
 # KEDAS v3.2.0 — Patch admin.py
 # Agregar AL FINAL de /opt/kedas/kedas/api/routers/admin.py

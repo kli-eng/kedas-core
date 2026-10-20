@@ -66,9 +66,42 @@ export async function loginUser({ username, password }) {
   if (data.debe_cambiar_password) {
     return { debeCambiar: true, tokenTemporal: data.access_token };
   }
+  // segundo factor pendiente. El token intermedio no se guarda: solo sirve para
+  // validar el código ("codigo") o configurar la app ("registro").
+  if (data.mfa_requerido || data.mfa_registro) {
+    return { mfa: data.mfa_requerido ? "codigo" : "registro", tokenTemporal: data.access_token };
+  }
+  return completarLogin(data);
+}
+
+async function completarLogin(data) {
   localStorage.setItem("kedas_token", data.access_token);
   const user = await getMe();
   return { token: data.access_token, user };
+}
+
+async function postAuth(ruta, token, body) {
+  const res = await fetch(`${API_BASE}/auth/${ruta}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) {
+    const err = new Error(await detalleError(res, `Error ${res.status} en la verificación`));
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+// verificación en dos pasos
+export const mfaSetup = (token) => postAuth("mfa/setup", token);
+export async function mfaActivar(token, codigo) {
+  const data = await postAuth("mfa/verificar", token, { codigo });
+  return data.access_token ? completarLogin(data) : data;
+}
+export async function mfaValidarLogin(token, codigo) {
+  return completarLogin(await postAuth("mfa/validar-login", token, { codigo }));
 }
 
 async function detalleError(res, porDefecto) {

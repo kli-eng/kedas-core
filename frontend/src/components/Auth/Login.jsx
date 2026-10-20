@@ -4,7 +4,7 @@
 // y OWASP ASVS: de 15 a 64 caracteres, sin exigir símbolos ni mayúsculas.
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginUser, cambiarPassword } from "../../services/api.js";
+import { loginUser, cambiarPassword, mfaSetup, mfaActivar, mfaValidarLogin } from "../../services/api.js";
 
 const MIN = 15;
 const MAX = 64;
@@ -18,12 +18,25 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [tokenCambio, setTokenCambio] = useState(null);
   const [nueva, setNueva] = useState({ password: "", confirmar: "" });
+  // verificación en dos pasos ({ modo: "codigo" | "registro", token })
+  const [mfa, setMfa] = useState(null);
+  const [qr, setQr] = useState(null);
+  const [codigo, setCodigo] = useState("");
   const navigate = useNavigate();
 
   const entrar = async (password) => {
     const res = await loginUser({ username: credentials.username, password });
     if (res.debeCambiar) {
       setTokenCambio(res.tokenTemporal);
+      return;
+    }
+    if (res.mfa) {
+      setMfa({ modo: res.mfa, token: res.tokenTemporal });
+      setCodigo("");
+      setQr(null);
+      if (res.mfa === "registro") {
+        setQr(await mfaSetup(res.tokenTemporal));
+      }
       return;
     }
     localStorage.setItem("kedas_user", JSON.stringify(res.user));
@@ -78,7 +91,37 @@ export default function Login() {
     }
   };
 
+  const handleCodigo = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (codigo.length !== 6) {
+      setError("El código tiene 6 dígitos.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = mfa.modo === "codigo"
+        ? await mfaValidarLogin(mfa.token, codigo)
+        : await mfaActivar(mfa.token, codigo);
+      localStorage.setItem("kedas_user", JSON.stringify(res.user));
+      navigate("/dashboard");
+    } catch (err) {
+      setCodigo("");
+      if (err.status === 401 && (err.message || "").includes("expirado")) {
+        volver();
+        setError("El tiempo para escribir el código expiró. Vuelva a ingresar.");
+      } else {
+        setError(err.message || "No se pudo verificar el código.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const volver = () => {
+    setMfa(null);
+    setQr(null);
+    setCodigo("");
     setTokenCambio(null);
     setNueva({ password: "", confirmar: "" });
     setCredentials({ ...credentials, password: "" });
@@ -96,7 +139,7 @@ export default function Login() {
           <p className="text-xs text-slate-500 mt-1">Kairós Learning Intelligent</p>
         </header>
 
-        {!tokenCambio && (
+        {!tokenCambio && !mfa && (
           <form onSubmit={handleSubmit} className="space-y-4" aria-label="Formulario de inicio de sesión">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-slate-700">
@@ -210,6 +253,80 @@ export default function Login() {
               className="w-full bg-kedas-primary hover:bg-blue-800 disabled:bg-slate-400 text-white font-medium py-2 px-4 rounded-md transition-colors"
             >
               {loading ? "Guardando..." : "Guardar y entrar"}
+            </button>
+            <button
+              type="button"
+              onClick={volver}
+              className="w-full text-sm text-slate-600 hover:text-slate-800 underline"
+            >
+              Volver al inicio de sesión
+            </button>
+          </form>
+        )}
+
+        {mfa && (
+          <form onSubmit={handleCodigo} className="space-y-4" aria-label="Verificación en dos pasos">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Verificación en dos pasos</h2>
+              {mfa.modo === "codigo" ? (
+                <p className="text-sm text-slate-600 mt-1">
+                  Abra la app de autenticación de su celular (por ejemplo, Google Authenticator) y
+                  escriba el código de 6 dígitos que aparece para «KEDAS-KLI».
+                </p>
+              ) : (
+                <p className="text-sm text-slate-600 mt-1">
+                  Su perfil accede a información sensible y requiere verificación en dos pasos.
+                  Instale en su celular una app de autenticación (Google Authenticator o Microsoft
+                  Authenticator), escanee este código QR y escriba el código de 6 dígitos que
+                  aparece. Solo se hace una vez.
+                </p>
+              )}
+            </div>
+
+            {mfa.modo === "registro" && qr && (
+              <div className="text-center">
+                <img
+                  src={`data:image/png;base64,${qr.qr_base64}`}
+                  alt="Código QR para configurar la app de autenticación"
+                  className="mx-auto w-48 h-48"
+                />
+                <details className="text-xs text-slate-600 mt-2 text-left">
+                  <summary className="cursor-pointer">¿No puede escanear? Escriba esta clave en la app</summary>
+                  <code className="block mt-1 break-all select-all bg-slate-50 p-2 rounded">{qr.secret}</code>
+                </details>
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="codigo-mfa" className="block text-sm font-medium text-slate-700">
+                Código de 6 dígitos
+              </label>
+              <input
+                id="codigo-mfa"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                required
+                className={claseInput + " tracking-widest text-center text-lg"}
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+            </div>
+
+            {error && (
+              <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || (mfa.modo === "registro" && !qr)}
+              className="w-full bg-kedas-primary hover:bg-blue-800 disabled:bg-slate-400 text-white font-medium py-2 px-4 rounded-md transition-colors"
+            >
+              {loading ? "Verificando..." : "Verificar y entrar"}
             </button>
             <button
               type="button"
