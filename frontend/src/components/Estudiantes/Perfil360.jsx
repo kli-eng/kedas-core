@@ -19,6 +19,8 @@ const SEMAFORO = {
   amarillo: { color: "bg-yellow-400", label: "Atención" },
   rojo:     { color: "bg-red-400", label: "Crítico" },
 };
+// color según la categoría oficial del Mineduc (calculada con la TAC)
+const ACENTO_CATEGORIA = { esperada: "green", reiterada: "yellow", grave: "red", critica: "red" };
 
 function KpiCard({ label, value, sub, accent }) {
   const colors = {
@@ -183,10 +185,12 @@ export default function Perfil360({ user }) {
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KpiCard
-                label="Asistencia 30d"
-                value={perfil.asistencia_pct != null ? `${perfil.asistencia_pct}%` : "—"}
-                sub={perfil.semaforo_asistencia ? SEMAFORO[perfil.semaforo_asistencia]?.label : null}
-                accent={perfil.semaforo_asistencia === "rojo" ? "red" : perfil.semaforo_asistencia === "amarillo" ? "yellow" : "green"}
+                label="Asistencia del año (TAC)"
+                value={perfil.asistencia_tac != null ? `${perfil.asistencia_tac}%` : "—"}
+                sub={perfil.asistencia_tac == null
+                  ? "Sin datos todavía"
+                  : `${perfil.asistencia_categoria_etiqueta}${perfil.asistencia_tam != null ? ` · ${perfil.asistencia_mes}: ${perfil.asistencia_tam}%` : ""}`}
+                accent={ACENTO_CATEGORIA[perfil.asistencia_categoria] || "slate"}
               />
               <KpiCard
                 label="Alertas activas"

@@ -28,6 +28,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from api.asistencia import tasas_estudiante
 import asyncpg
 
 from api.routers.auth import TokenData, verificar_permiso, hash_actor_id
@@ -63,6 +64,12 @@ class PerfilEstudianteResponse(BaseModel):
     curso:               Optional[str] = None
     asistencia_pct:      Optional[float] = None
     semaforo_asistencia: Optional[str] = None
+    # TAC, TAM y categoría oficial (api/asistencia.py)
+    asistencia_tac:     Optional[float] = None
+    asistencia_tam:     Optional[float] = None
+    asistencia_mes:     Optional[str] = None
+    asistencia_categoria: Optional[str] = None
+    asistencia_categoria_etiqueta: Optional[str] = None
 
 
 class ProgresoEstudianteResponse(BaseModel):
@@ -136,6 +143,7 @@ async def obtener_perfil_estudiante(
         nombre_display=datos.get("nombre_completo"),
         curso=datos.get("curso"),
         asistencia_pct=float(asist["pct"]) if asist and asist["pct"] is not None else None,
+        **(await tasas_estudiante(conn, hash_id)),
         semaforo_asistencia=asist["semaforo"] if asist else None,
     )
 

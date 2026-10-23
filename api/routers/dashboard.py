@@ -32,6 +32,7 @@ import asyncpg
 from api.routers.auth import TokenData, verificar_permiso, hash_actor_id
 from api.routers.estudiantes import get_db
 from api.services.kolibri_reader import leer_sesiones_kolibri
+from api.asistencia import resumen_establecimiento
 
 logger = logging.getLogger("kedas.dashboard")
 router = APIRouter()
@@ -42,6 +43,13 @@ class DashboardResponse(BaseModel):
     nombre_establecimiento: Optional[str] = None
     asistencia_pct_30d: Optional[float] = None
     asistencia_semaforo_rojo: int
+    # definiciones oficiales del Mineduc (api/asistencia.py)
+    asistencia_tac: Optional[float] = None
+    asistencia_tam: Optional[float] = None
+    asistencia_mes: Optional[str] = None
+    asistencia_categorias: Optional[dict] = None
+    asistencia_estudiantes: int = 0
+    asistencia_fuente: Optional[str] = None
     kolibri_sesiones: Optional[dict] = None
 
 
@@ -77,6 +85,7 @@ async def _agregar_dashboard(
           AND a.fecha >= CURRENT_DATE - INTERVAL '30 days'
     """, establecimiento_id)
 
+    resumen_asist = await resumen_establecimiento(conn, establecimiento_id)
     kolibri = leer_sesiones_kolibri(establecimiento_id)
 
     # Audit log obligatorio (Art. 3°a Ley 21.719)
@@ -95,6 +104,7 @@ async def _agregar_dashboard(
         nombre_establecimiento=establecimiento["nombre"],
         asistencia_pct_30d=float(asist["pct"]) if asist and asist["pct"] is not None else None,
         asistencia_semaforo_rojo=asist["rojos"] if asist else 0,
+        **resumen_asist,
         kolibri_sesiones=kolibri,
     )
 

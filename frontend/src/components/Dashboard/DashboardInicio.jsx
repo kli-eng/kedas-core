@@ -169,7 +169,12 @@ export default function DashboardInicio({ user }) {
   const cursosEnRojo = datos?.asistencia_semaforo_rojo ?? null;
   const sesionesKolibri = datos?.kolibri_sesiones?.total_sesiones ?? null;
 
-  const semaforoAsistencia = asistencia === null ? "gris" : asistencia >= 90 ? "verde" : asistencia >= 85 ? "amarillo" : "rojo";
+  // categorías oficiales del Mineduc, calculadas en el servidor con la TAC
+  const asistTAC = datos?.asistencia_tac ?? null;
+  const asistTAM = datos?.asistencia_tam ?? null;
+  const asistMes = datos?.asistencia_mes ?? null;
+  const asistCat = datos?.asistencia_categorias ?? null;
+  const semaforoAsistencia = asistTAC === null ? "gris" : asistTAC >= 90 ? "verde" : asistTAC >= 85 ? "amarillo" : "rojo";
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh] text-slate-500 text-sm">
@@ -211,16 +216,14 @@ export default function DashboardInicio({ user }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <TarjetaIndicador
             icono="🗓️"
-            titulo="Asistencia (30 días)"
-            valor={asistencia !== null ? `${asistencia}%` : "–"}
+            titulo="Asistencia del año (TAC)"
+            valor={asistTAC !== null ? `${asistTAC}%` : "–"}
             semaforo={semaforoAsistencia}
-            que_es="Porcentaje de registros de asistencia marcados como «presente» en los últimos 30 días, según los datos de asistencia cargados en KEDAS."
-            comparacion="Se habla de ausentismo crónico cuando un estudiante falta al 10 % o más de los días de clases, es decir, cuando su asistencia baja del 90 %."
-            accion={asistencia === null
+            que_es="Tasa de asistencia acumulada del año: días asistidos (presente o con atraso) sobre días con registro, según los datos de asistencia cargados en KEDAS. Las ausencias justificadas cuentan como inasistencia, igual que en la tasa del Mineduc."
+            comparacion="Categorías del Mineduc (Centro de Estudios, Apuntes 109): asistencia esperada 90 % o más; inasistencia reiterada 85 % a menos de 90 %; grave 50 % a menos de 85 %; crítica menos de 50 %. La asistencia suele bajar en mayo y junio."
+            accion={asistTAC === null
               ? "Aún no hay registros de asistencia cargados para este establecimiento."
-              : cursosEnRojo > 0
-              ? `${cursosEnRojo} curso(s) con semáforo rojo en los últimos 7 días: revisa con sus profesores jefes.`
-              : "Sin cursos en semáforo rojo en los últimos 7 días."}
+              : `${(asistCat?.grave ?? 0) + (asistCat?.critica ?? 0)} estudiante(s) con inasistencia grave o crítica y ${asistCat?.reiterada ?? 0} con inasistencia reiterada${asistTAM !== null ? `. En ${asistMes}: ${asistTAM}%` : ""}. Revisa los casos con sus profesores jefes.`}
           />
           <TarjetaIndicador
             icono="🎯"
