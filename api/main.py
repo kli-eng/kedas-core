@@ -22,7 +22,7 @@ from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routers import auth, estudiantes, dashboard, admin, kolibri, rea
+from api.routers import auth, estudiantes, dashboard, admin, kolibri, rea, uso
 
 # ── Configuración de logging ──────────────────────────────────
 logging.basicConfig(
@@ -81,13 +81,14 @@ async def manejador_errores_global(request: Request, exc: Exception):
     )
 
 
-# ── Registrar routers (solo los 6 reales de Core) ─────────────
+# ── Registrar routers (solo los 7 reales de Core) ─────────────
 app.include_router(auth.router,        prefix="/api/v1/auth",        tags=["Autenticación"])
 app.include_router(estudiantes.router, prefix="/api/v1/estudiantes", tags=["Estudiantes"])
 app.include_router(dashboard.router,   prefix="/api/v1/dashboard",   tags=["Dashboard"])
 app.include_router(admin.router,       prefix="/api/v1/admin",       tags=["Administración"])
 app.include_router(kolibri.router,     prefix="/api/v1/kolibri",     tags=["Kolibri"])
 app.include_router(rea.router,         prefix="/api/v1",             tags=["REA"])
+app.include_router(uso.router,         prefix="/api/v1/uso",         tags=["Uso"])
 
 
 # ── Health check (sin autenticación) ─────────────────────────

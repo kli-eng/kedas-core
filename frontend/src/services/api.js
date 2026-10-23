@@ -140,6 +140,7 @@ export const logoutUser = () => {
 export const getDashboardDocente  = (id) => request(`/dashboard/docente/${id}`);
 export const getDashboardUTP      = (id) => request(`/dashboard/utp/${id}`);
 export const getDashboardDirector = (id) => request(`/dashboard/director/${id}`);
+export const getUso = (id) => request(`/uso/${id}`);
 export const getKolibriOnline = (id) => request(`/kolibri/${id}/online`);
 export const getKiraPrompts = () =>
   request(`/kira/prompts`);

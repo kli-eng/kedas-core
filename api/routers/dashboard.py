@@ -94,7 +94,7 @@ async def _agregar_dashboard(
             (actor_id, actor_rol, accion, entidad, resultado)
         VALUES ($1, $2, $3, $4, $5)
     """,
-        hash_actor_id(usuario.actor_hash), usuario.rol,
+        usuario.actor_hash, usuario.rol,
         "lectura", "kedas_establecimientos",
         f"exito: establecimiento_id={establecimiento_id}"
     )

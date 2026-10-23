@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import UsoKedas from "./UsoKedas.jsx";
 import { getDashboardUTP, getDashboardDirector } from "../../services/api.js";
 
 // ── Componente: tarjeta de indicador con contexto pedagógico ──
@@ -241,6 +242,9 @@ export default function DashboardInicio({ user }) {
         </div>
       </div>
       )}
+
+      {/* Lo que KEDAS entregó y pidió digitar — dirección y UTP */}
+      {(user?.role === "director" || user?.role === "utp") && estId !== null && <UsoKedas estId={estId} />}
 
       {/* Accesos rápidos */}
       <div>
