@@ -52,7 +52,7 @@ export default function Sidebar({ user }) {
       )}
 
       <footer className="absolute bottom-4 text-xs text-slate-500">
-        Soberanía local · Ley 21.719
+        Diseñado para instalación local · Se alinea con la Ley 21.719
       </footer>
     </nav>
   );

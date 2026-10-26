@@ -131,8 +131,8 @@ const ONBOARDING = {
         texto:  "Capa 1: datos básicos de matrícula (siempre activa). Capa 2: IA predictiva de riesgo académico (opt-in, puedes desactivarla). Capa 3: datos de convivencia. Capa 4: investigación educativa anonimizada. Cada capa es independiente y revocable.",
       },
       {
-        titulo: "Tus datos permanecen en el colegio",
-        texto:  "Los datos de tu hijo/a nunca salen del servidor del establecimiento. KEDAS no los comparte con servicios en la nube externos (Ley 21.719 de Protección de Datos Personales).",
+        titulo: "Dónde se guardan los datos",
+        texto:  "KEDAS está diseñado para instalarse en un servidor del establecimiento o del sostenedor: allí se guardan y procesan los datos de tu hijo/a, sin enviarlos a servicios externos de inteligencia artificial. El establecimiento te informa si usa respaldos externos o envío de correos.",
       },
     ],
   },
@@ -150,8 +150,8 @@ const ONBOARDING = {
         texto:  "Puedes crear usuarios para cada rol del establecimiento (docente, orientador, psicólogo, director, etc.) y asignarlos al establecimiento correspondiente.",
       },
       {
-        titulo: "Sincronización de datos Kolibri",
-        texto:  "El sistema procesa automáticamente los datos de sesiones de tus estudiantes cada 6 horas. Si los datos no se actualizan, contacta al soporte técnico de KLI.",
+        titulo: "Datos de Kolibri",
+        texto:  "Hoy los datos de Kolibri no se sincronizan solos: se cargan desde archivos exportados o con una actualización manual. Si no ves datos recientes, contacta al soporte técnico.",
       },
     ],
   },
@@ -181,8 +181,8 @@ const DEFAULT_ONBOARDING = {
   icono:  "✅",
   pasos: [
     {
-      titulo: "Sistema de Inteligencia Escolar Local",
-      texto:  "KEDAS procesa datos educativos localmente — ningún dato sale del servidor del establecimiento. Toda acción queda registrada en la bitácora de auditoría.",
+      titulo: "Sistema de Inteligencia Escolar",
+      texto:  "KEDAS procesa los datos educativos en el servidor donde está instalado, sin enviarlos a servicios externos de inteligencia artificial. Toda acción queda registrada en la bitácora de auditoría.",
     },
   ],
 };
