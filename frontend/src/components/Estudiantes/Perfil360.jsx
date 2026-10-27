@@ -193,11 +193,6 @@ export default function Perfil360({ user }) {
                 accent={ACENTO_CATEGORIA[perfil.asistencia_categoria] || "slate"}
               />
               <KpiCard
-                label="Alertas activas"
-                value={perfil.incidentes_activos ?? 0}
-                accent={perfil.incidentes_activos > 0 ? "red" : "slate"}
-              />
-              <KpiCard
                 label="Interacciones"
                 value={progreso?.interacciones_total ?? "—"}
                 sub="últimos 30 días"
@@ -260,9 +255,9 @@ export default function Perfil360({ user }) {
             )}
 
             {/* Aviso sin consentimiento */}
-            {!perfil.consentimiento_predictivo && (
+            {perfil.consentimiento_predictivo === false && (
               <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-lg">
-                ℹ️ El apoderado no ha otorgado consentimiento predictivo (Capa 2).
+                ℹ️ El apoderado no ha otorgado el consentimiento de alertas tempranas (Capa 2).
                 Los índices de riesgo y factores SHAP no están disponibles.
               </p>
             )}

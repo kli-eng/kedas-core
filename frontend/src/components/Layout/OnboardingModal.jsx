@@ -66,11 +66,11 @@ const ONBOARDING = {
     icono:  "🔔",
     pasos: [
       {
-        titulo: "Las alertas las genera el modelo ML, tú las decides",
-        texto:  "El sistema detecta patrones de riesgo académico automáticamente. Pero ninguna alerta genera consecuencias sobre un estudiante sin tu confirmación explícita. Esto es un requisito legal (Art. 8° bis Ley 21.719).",
+        titulo: "Las alertas tempranas las decides tú",
+        texto:  "KEDAS señala como alerta temprana posibles situaciones de riesgo académico. Ninguna alerta genera consecuencias sobre un estudiante sin tu confirmación explícita. Este diseño se alinea con el art. 8° bis de la Ley 21.719 (decisiones automatizadas).",
       },
       {
-        titulo: "Tienes 5 días hábiles por alerta",
+        titulo: "Tienes 5 días hábiles por alerta (plazo de KEDAS)",
         texto:  "Cada alerta debe ser confirmada (con acción de intervención) o desestimada (con justificación escrita) dentro de 5 días hábiles. Las alertas vencidas escalan al director.",
       },
       {
@@ -128,7 +128,7 @@ const ONBOARDING = {
       },
       {
         titulo: "4 capas de consentimiento",
-        texto:  "Capa 1: datos básicos de matrícula (siempre activa). Capa 2: IA predictiva de riesgo académico (opt-in, puedes desactivarla). Capa 3: datos de convivencia. Capa 4: investigación educativa anonimizada. Cada capa es independiente y revocable.",
+        texto:  "Capa 1: datos básicos de matrícula (siempre activa). Capa 2: alertas tempranas de riesgo académico (opcional, puedes desactivarla). Capa 3: notificaciones y comunicación. Capa 4: investigación educativa anonimizada. Cada capa es independiente y revocable.",
       },
       {
         titulo: "Dónde se guardan los datos",
