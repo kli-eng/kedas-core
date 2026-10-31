@@ -17,8 +17,8 @@ const ONBOARDING = {
         texto:  "Los nombres de tus estudiantes aparecen normalmente en la interfaz. Internamente, KEDAS usa un código seudónimo para proteger la privacidad (Ley 21.719). Esto ocurre de forma automática — tú ves los nombres, el sistema protege los datos.",
       },
       {
-        titulo: "Si detectas un problema de convivencia",
-        texto:  "Comunícalo al orientador/a o psicólogo/a del establecimiento — ellos son los responsables de registrarlo en el sistema. Tu rol en KEDAS es el seguimiento del progreso académico de tus estudiantes.",
+        titulo: "La convivencia también es parte de tu trabajo",
+        texto:  "Si observas una situación de convivencia, avísala según el reglamento interno de tu colegio, normalmente al encargado/a de convivencia o al orientador/a. Hoy el registro en KEDAS lo hacen esos equipos; tu aviso es lo que permite que el caso se atienda a tiempo.",
       },
     ],
   },
@@ -28,12 +28,12 @@ const ONBOARDING = {
     icono:  "📊",
     pasos: [
       {
-        titulo: "Vista agregada de todos los cursos",
-        texto:  "Tu dashboard muestra el estado de riesgo académico por curso, basado en las sesiones Kolibri. Puedes identificar qué cursos necesitan más apoyo pedagógico.",
+        titulo: "Vista de todos los cursos",
+        texto:  "Tu inicio reúne lo que KEDAS sabe de los cursos: la actividad en Kolibri y, según los módulos de tu colegio, la cobertura de los objetivos de aprendizaje. Te ayuda a ver qué cursos necesitan más apoyo pedagógico; los datos orientan, no evalúan.",
       },
       {
         titulo: "Priorización basada en datos",
-        texto:  "El dashboard muestra qué cursos tienen menor actividad en Kolibri y más rezago en recursos. Úsalo para decidir en qué cursos concentrar el apoyo pedagógico esta semana.",
+        texto:  "El inicio muestra qué cursos tienen menos actividad en Kolibri y menor avance en los recursos. Úsalo para decidir dónde concentrar el apoyo pedagógico esta semana.",
       },
       {
         titulo: "Recursos Educativos Abiertos (REA)",

@@ -71,8 +71,8 @@ export const MENU_POR_ROL = {
       },
       {
         modulo: "MOD-06",
-        nombre: "Predicciones",
-        items: [{ label: "Predicciones", path: "/dashboard/predicciones" }],
+        nombre: "Alertas tempranas",
+        items: [{ label: "Alertas tempranas", path: "/dashboard/predicciones" }],
       },
     ],
   },
@@ -104,8 +104,8 @@ export const MENU_POR_ROL = {
       },
       {
         modulo: "MOD-06",
-        nombre: "Predicciones",
-        items: [{ label: "Predicciones", path: "/dashboard/predicciones" }],
+        nombre: "Alertas tempranas",
+        items: [{ label: "Alertas tempranas", path: "/dashboard/predicciones" }],
       },
     ],
   },

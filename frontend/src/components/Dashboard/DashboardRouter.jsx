@@ -146,8 +146,8 @@ export default function DashboardRouter() {
           esPredicciones ? (
             <ModuloProximamente
               modulo="MOD-06"
-              nombre="Predicciones"
-              descripcion="Modelo de predicción de riesgo académico con IA local (Ollama). Disponible próximamente."
+              nombre="Alertas tempranas"
+              descripcion="Alertas tempranas de riesgo académico basadas en criterios pedagógicos, con un modelo estadístico en validación. Disponible con licencia comercial KLI. Contacto: hola@kli.cl"
             />
           ) :
           esCumplimiento ? (
