@@ -111,7 +111,7 @@ async def refresh_kolibri(
             await conn.execute(
                 """
                 INSERT INTO kedas_kolibri_cache (establecimiento_id, datos, actualizado_at)
-                VALUES ($1, $2::jsonb, $3)
+                VALUES ($1, ($2::text)::jsonb, $3)   -- sin doble codificación
                 ON CONFLICT (establecimiento_id)
                 DO UPDATE SET datos = EXCLUDED.datos, actualizado_at = EXCLUDED.actualizado_at
                 """,
