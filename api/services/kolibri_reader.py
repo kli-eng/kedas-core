@@ -174,3 +174,61 @@ def _agregar(est_id: int, sesiones: list, resumidos: list, fuente: str) -> dict:
         "archivo_fuente": fuente,
         "leido_en": datetime.utcnow().isoformat() + "Z",
     }
+
+
+# ── Resumen desde la tabla de sesiones (una sola fuente para todas las pantallas) ──
+_NOMBRE_ASIGNATURA = {"Matematica": "Matemática", "Lenguaje y Comunicacion": "Lenguaje y Comunicación",
+                      "Ciencias Naturales": "Ciencias Naturales",
+                      "Historia Geografia y Ciencias Sociales": "Historia, Geografía y Ciencias Sociales"}
+
+
+async def resumen_sesiones_kolibri(conn, establecimiento_id: int) -> Optional[dict]:
+    """Resumen de la actividad de Kolibri del establecimiento desde kedas_sesiones_curriculares.
+
+    Misma estructura que leer_sesiones_kolibri (CSV), para que el inicio y los paneles por rol no cambien.
+    Incluye la actividad cargada automáticamente desde Kolibri y la del generador del demo.
+    Devuelve None si no hay sesiones o si la tabla no existe en esta instalación.
+    """
+    try:
+        tot = await conn.fetchrow("""
+            SELECT COUNT(*) AS sesiones, COUNT(DISTINCT hash_usuario) AS usuarios,
+                   COUNT(DISTINCT (hash_usuario, content_id)) FILTER (WHERE progreso >= 1) AS completados,
+                   COALESCE(SUM(tiempo_segundos), 0) / 60.0 AS minutos
+            FROM kedas_sesiones_curriculares
+            WHERE establecimiento_id = $1 AND tipo_usuario = 'Estudiante'
+        """, establecimiento_id)
+        if not tot or not tot["sesiones"]:
+            return None
+        niveles = await conn.fetch("""
+            SELECT nivel_nombre AS nivel, COUNT(*) AS sesiones,
+                   ROUND(COALESCE(SUM(tiempo_segundos), 0) / 60.0, 1) AS minutos,
+                   COUNT(DISTINCT (hash_usuario, content_id)) FILTER (WHERE progreso >= 1) AS completados
+            FROM kedas_sesiones_curriculares
+            WHERE establecimiento_id = $1 AND tipo_usuario = 'Estudiante'
+            GROUP BY nivel_nombre ORDER BY nivel_nombre
+        """, establecimiento_id)
+        asig = await conn.fetchval("""
+            SELECT asignatura FROM kedas_sesiones_curriculares
+            WHERE establecimiento_id = $1 AND tipo_usuario = 'Estudiante' AND asignatura <> 'Sin OA validado'
+            GROUP BY asignatura ORDER BY COUNT(*) DESC LIMIT 1
+        """, establecimiento_id)
+        centro = await conn.fetchval("SELECT nombre FROM kedas_establecimientos WHERE id = $1", establecimiento_id)
+    except Exception as e:  # p. ej., instalación sin la tabla: el inicio sigue funcionando sin la tarjeta
+        logger.warning("resumen_sesiones_kolibri est_id=%s: %s", establecimiento_id, e)
+        return None
+    minutos = float(tot["minutos"] or 0)
+    return {
+        "establecimiento_id": establecimiento_id,
+        "centro": centro,
+        "canal_principal": _NOMBRE_ASIGNATURA.get(asig, asig) if asig else None,
+        "total_sesiones": tot["sesiones"],
+        "usuarios_activos": tot["usuarios"],
+        "recursos_completados": tot["completados"],
+        "tiempo_total_minutos": round(minutos, 1),
+        "horas_totales": round(minutos / 60.0, 2),
+        "por_nivel": [{"nivel": r["nivel"], "sesiones": r["sesiones"], "minutos": float(r["minutos"]),
+                       "completados": r["completados"]} for r in niveles],
+        "fuente": "actividad registrada en KEDAS",
+        "archivo_fuente": None,
+        "leido_en": datetime.utcnow().isoformat() + "Z",
+    }

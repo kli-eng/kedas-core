@@ -31,7 +31,7 @@ import asyncpg
 
 from api.routers.auth import TokenData, verificar_permiso, hash_actor_id
 from api.routers.estudiantes import get_db
-from api.services.kolibri_reader import leer_sesiones_kolibri
+from api.services.kolibri_reader import leer_sesiones_kolibri, resumen_sesiones_kolibri
 from api.asistencia import resumen_establecimiento
 
 logger = logging.getLogger("kedas.dashboard")
@@ -86,7 +86,7 @@ async def _agregar_dashboard(
     """, establecimiento_id)
 
     resumen_asist = await resumen_establecimiento(conn, establecimiento_id)
-    kolibri = leer_sesiones_kolibri(establecimiento_id)
+    kolibri = await resumen_sesiones_kolibri(conn, establecimiento_id) or leer_sesiones_kolibri(establecimiento_id)  # tabla de sesiones; CSV solo si no hay sesiones
 
     # Audit log obligatorio (Art. 3°a Ley 21.719)
     await conn.execute("""
