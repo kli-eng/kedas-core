@@ -28,6 +28,8 @@ ante el primer error (`ON_ERROR_STOP`).
 010a_kedas_slep_rea.sql
 010c_fk_establecimientos_slep.sql
 011_credenciales.sql
+012_mfa.sql
+013_bloqueo_login.sql
 ```
 
 `kedas_slep` se crea vacía: Core no incluye datos de ninguna

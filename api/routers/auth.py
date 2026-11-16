@@ -13,8 +13,32 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
-from slowapi.util import get_remote_address
-limiter = Limiter(key_func=get_remote_address)
+import ipaddress
+
+# La API está detrás de Caddy: la dirección de conexión es la de Caddy para todos los usuarios.
+# Para limitar los intentos por persona se usa la IP real que Caddy agrega al final de
+# X-Forwarded-For, pero SOLO si la petición llega desde la red de Docker (Caddy); desde
+# cualquier otro origen se usa la dirección de conexión.
+_REDES_PROXY = (ipaddress.ip_network("172.16.0.0/12"),)
+
+
+def ip_cliente(request) -> str:
+    par = request.client.host if request.client else ""
+    try:
+        desde_proxy = any(ipaddress.ip_address(par) in red for red in _REDES_PROXY)
+    except ValueError:
+        desde_proxy = False
+    if desde_proxy:
+        xff = request.headers.get("x-forwarded-for", "")
+        ultima = xff.split(",")[-1].strip() if xff else ""
+        try:
+            return str(ipaddress.ip_address(ultima))
+        except ValueError:
+            pass
+    return par or "desconocido"
+
+
+limiter = Limiter(key_func=ip_cliente)
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -119,6 +143,11 @@ TOKEN_CAMBIO_MIN = 10
 _PALABRAS_CONTEXTO = ("kedas", "kairos", "kairós")
 _RUTA_BLOQUEO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "data", "contrasenas_bloqueadas.txt")
+# Límite de contraseñas incorrectas por cuenta (migración 013)
+LOGIN_MAX_FALLOS = 10
+LOGIN_BLOQUEO_MIN = 15
+MENSAJE_LOGIN_BLOQUEADO = (f"Demasiados intentos. Espere {LOGIN_BLOQUEO_MIN} minutos e intente "
+                           "de nuevo, o pida a la dirección que restablezca su contraseña.")
 MENSAJE_VENCIDA = ("Su cuenta venció. Si necesita más tiempo, contacte a quien le "
                    "entregó el acceso.")
 
@@ -338,18 +367,45 @@ async def login(
     """
     row = await conn.fetchrow(
         "SELECT id, username, password_hash, role, establecimiento_id, activo, "
-        "debe_cambiar_password, vence_en, totp_habilitado "
+        "debe_cambiar_password, vence_en, totp_habilitado, "
+        "login_fallos, login_bloqueado_hasta "
         "FROM kedas_usuarios WHERE username = $1",
         form_data.username,
     )
+    # Mientras la cuenta está bloqueada no se revisa la contraseña.
+    if row and row["login_bloqueado_hasta"] is not None \
+            and row["login_bloqueado_hasta"] > datetime.now(timezone.utc):
+        raise HTTPException(status_code=429, detail=MENSAJE_LOGIN_BLOQUEADO)
     if not row or not row["activo"] or not verificar_password(
         form_data.password, row["password_hash"]
     ):
+        if row:
+            # Suma el fallo (o parte de 1 si el bloqueo anterior ya venció) y bloquea al llegar al máximo.
+            fallos, bloqueado = await conn.fetchrow(
+                "WITH c AS (SELECT CASE WHEN login_bloqueado_hasta IS NOT NULL "
+                "  THEN 1 ELSE login_fallos + 1 END AS n FROM kedas_usuarios WHERE id = $1) "
+                "UPDATE kedas_usuarios u SET login_fallos = c.n, "
+                "  login_bloqueado_hasta = CASE WHEN c.n >= $2 THEN NOW() + make_interval(mins => $3) "
+                "  ELSE NULL END "
+                "FROM c WHERE u.id = $1 RETURNING u.login_fallos, u.login_bloqueado_hasta",
+                row["id"], LOGIN_MAX_FALLOS, LOGIN_BLOQUEO_MIN,
+            )
+            if bloqueado is not None:
+                await _auditar_auth(conn, hash_actor_id(row["username"]), row["role"],
+                                    "login_bloqueado",
+                                    f"{fallos} contraseñas incorrectas seguidas; bloqueo de "
+                                    f"{LOGIN_BLOQUEO_MIN} minutos")
+                logger.warning("Cuenta bloqueada por intentos: actor=%s",
+                               hash_actor_id(row["username"]))
+                raise HTTPException(status_code=429, detail=MENSAJE_LOGIN_BLOQUEADO)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if row["login_fallos"] or row["login_bloqueado_hasta"] is not None:
+        await conn.execute("UPDATE kedas_usuarios SET login_fallos = 0, login_bloqueado_hasta = NULL "
+                           "WHERE id = $1", row["id"])   # contraseña correcta: reinicia el contador
     if row["role"] not in ROLES_VALIDOS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Rol no autorizado"

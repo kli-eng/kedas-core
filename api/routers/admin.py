@@ -254,6 +254,9 @@ async def actualizar_usuario(
             raise HTTPException(403, "Usuario fuera del establecimiento del director.")
         if body.role == "admin":
             raise HTTPException(403, "Un director no puede asignar rol admin.")
+        # El director no mueve usuarios a otro establecimiento ni los deja sin él
+        if "establecimiento_id" in body.model_fields_set and body.establecimiento_id != usuario.establecimiento_id:
+            raise HTTPException(403, "Un director no puede cambiar el establecimiento de un usuario.")
 
     # Construir UPDATE dinámico
     sets = []
@@ -356,6 +359,7 @@ async def reset_password(
     nueva = secrets.token_urlsafe(15)   # DEC-73: 20 caracteres aleatorios
     await conn.execute(
         "UPDATE kedas_usuarios SET password_hash = $1, debe_cambiar_password = TRUE, "
+        "login_fallos = 0, login_bloqueado_hasta = NULL, "   # levanta el bloqueo por intentos
         "updated_at = NOW() WHERE id = $2",
         hashear_password(nueva), user_id
     )
