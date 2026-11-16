@@ -121,7 +121,7 @@ async def obtener_perfil_estudiante(
     # Asistencia últimos 30 días
     asist = await conn.fetchrow("""
         SELECT
-            ROUND(100.0 * COUNT(*) FILTER (WHERE a.estado = 'presente')
+            ROUND(100.0 * COUNT(*) FILTER (WHERE a.estado IN ('presente', 'tardanza'))  -- día asistido: presente o con atraso, igual que la TAC
                   / NULLIF(COUNT(*), 0), 1) AS pct,
             MAX(a.semaforo) FILTER (WHERE a.fecha >= CURRENT_DATE - INTERVAL '7 days') AS semaforo
         FROM kedas_asistencia a

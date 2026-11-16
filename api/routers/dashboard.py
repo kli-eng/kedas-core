@@ -73,7 +73,7 @@ async def _agregar_dashboard(
 
     asist = await conn.fetchrow("""
         SELECT
-            ROUND(100.0 * COUNT(*) FILTER (WHERE a.estado = 'presente')
+            ROUND(100.0 * COUNT(*) FILTER (WHERE a.estado IN ('presente', 'tardanza'))  -- día asistido: presente o con atraso, igual que la TAC
                   / NULLIF(COUNT(*), 0), 1) AS pct,
             COUNT(DISTINCT a.curso_id) FILTER (
                 WHERE a.semaforo = 'rojo'
