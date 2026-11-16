@@ -1,26 +1,15 @@
 // frontend/src/components/Estudiantes/Perfil360.jsx
-// KEDAS v3.3.0 — S4-02 Perfil 360° del alumno
-// Lista navegable + detalle consolidado (riesgo + asistencia + Kolibri + alertas)
-import { useEffect, useState } from "react";
+// KEDAS v3.4.0 — S4-02 Perfil 360° del alumno
+// Lista navegable + ficha del estudiante (asistencia + actividad en Kolibri)
+// La ficha y la actividad de Kolibri se piden por separado: si una falla, la otra se muestra igual.
+import { useEffect, useRef, useState } from "react";
 import { listarEstudiantes, obtenerPerfil, obtenerProgreso } from "../../services/api.js";
 
-const RIESGO_BADGE = {
-  Alto:     "bg-red-100 text-red-700",
-  Moderado: "bg-yellow-100 text-yellow-700",
-  Bajo:     "bg-green-100 text-green-700",
-};
-const RIESGO_BAR = {
-  Alto:     "bg-red-400",
-  Moderado: "bg-yellow-400",
-  Bajo:     "bg-green-400",
-};
-const SEMAFORO = {
-  verde:    { color: "bg-green-400", label: "Normal" },
-  amarillo: { color: "bg-yellow-400", label: "Atención" },
-  rojo:     { color: "bg-red-400", label: "Crítico" },
-};
 // color según la categoría oficial del Mineduc (calculada con la TAC)
 const ACENTO_CATEGORIA = { esperada: "green", reiterada: "yellow", grave: "red", critica: "red" };
+
+const fmt = (n, dec = 1) =>
+  Number(n).toLocaleString("es-CL", { maximumFractionDigits: dec });
 
 function KpiCard({ label, value, sub, accent }) {
   const colors = {
@@ -46,8 +35,11 @@ export default function Perfil360({ user }) {
   const [hashSel, setHashSel] = useState(null);
   const [perfil, setPerfil] = useState(null);
   const [progreso, setProgreso] = useState(null);
+  const [errorPerfil, setErrorPerfil] = useState(null);
+  const [errorProgreso, setErrorProgreso] = useState(false);
   const [cargandoPerfil, setCargandoPerfil] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const ultimaSeleccion = useRef(null);
 
   useEffect(() => {
     listarEstudiantes()
@@ -58,19 +50,20 @@ export default function Perfil360({ user }) {
 
   const seleccionarEstudiante = async (hashId) => {
     if (hashId === hashSel) return;
+    ultimaSeleccion.current = hashId;
     setHashSel(hashId); setPerfil(null); setProgreso(null);
+    setErrorPerfil(null); setErrorProgreso(false);
     setCargandoPerfil(true);
-    try {
-      const [p, pr] = await Promise.all([
-        obtenerPerfil(hashId),
-        obtenerProgreso(hashId, 30),
-      ]);
-      setPerfil(p); setProgreso(pr);
-    } catch {
-      setPerfil(null);
-    } finally {
-      setCargandoPerfil(false);
-    }
+    const [p, pr] = await Promise.allSettled([
+      obtenerPerfil(hashId),
+      obtenerProgreso(hashId, 30),
+    ]);
+    if (ultimaSeleccion.current !== hashId) return; // se eligió otro estudiante mientras cargaba
+    if (p.status === "fulfilled") setPerfil(p.value);
+    else setErrorPerfil("No se pudo cargar la ficha de este estudiante.");
+    if (pr.status === "fulfilled") setProgreso(pr.value);
+    else setErrorProgreso(true);
+    setCargandoPerfil(false);
   };
 
   const listaFiltrada = lista.filter(e =>
@@ -78,7 +71,7 @@ export default function Perfil360({ user }) {
     (e.curso || "").toLowerCase().includes(busqueda.toLowerCase())
   );
 
-  const estudianteSel = lista.find(e => e.hash_id === hashSel);
+  const sinActividad = progreso && !progreso.interacciones_total;
 
   return (
     <div className="flex h-full gap-4 p-4 max-w-6xl mx-auto">
@@ -120,11 +113,6 @@ export default function Perfil360({ user }) {
                   </p>
                   <p className="text-xs text-slate-400">{e.curso || "Sin curso"}</p>
                 </div>
-                {e.risk_level && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${RIESGO_BADGE[e.risk_level] || "bg-slate-100 text-slate-600"}`}>
-                    {e.risk_level}
-                  </span>
-                )}
               </div>
             </button>
           ))}
@@ -149,117 +137,72 @@ export default function Perfil360({ user }) {
           </div>
         )}
 
+        {errorPerfil && !cargandoPerfil && (
+          <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{errorPerfil}</p>
+        )}
+
         {perfil && !cargandoPerfil && (
           <div className="space-y-5">
-            {/* Header */}
-            <div className="flex items-start justify-between">
+            {/* Encabezado */}
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-slate-800">
                   {perfil.nombre_display || "Estudiante"}
                 </h2>
                 <p className="text-sm text-slate-400">{perfil.curso || ""}</p>
               </div>
-              {perfil.risk_level && (
-                <span className={`text-sm px-3 py-1 rounded-full font-semibold ${RIESGO_BADGE[perfil.risk_level]}`}>
-                  Riesgo {perfil.risk_level}
-                </span>
-              )}
             </div>
-
-            {/* Barra de riesgo */}
-            {perfil.riesgo_score != null && (
-              <div>
-                <div className="flex justify-between text-xs text-slate-500 mb-1">
-                  <span>Índice de riesgo</span>
-                  <span>{Math.round(perfil.riesgo_score * 100)}%</span>
-                </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${RIESGO_BAR[perfil.risk_level] || "bg-slate-400"}`}
-                    style={{ width: `${Math.round(perfil.riesgo_score * 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
 
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KpiCard
                 label="Asistencia del año (TAC)"
-                value={perfil.asistencia_tac != null ? `${perfil.asistencia_tac}%` : "—"}
+                value={perfil.asistencia_tac != null ? `${fmt(perfil.asistencia_tac)} %` : "—"}
                 sub={perfil.asistencia_tac == null
                   ? "Sin datos todavía"
-                  : `${perfil.asistencia_categoria_etiqueta}${perfil.asistencia_tam != null ? ` · ${perfil.asistencia_mes}: ${perfil.asistencia_tam}%` : ""}`}
+                  : `${perfil.asistencia_categoria_etiqueta}${perfil.asistencia_tam != null ? ` · ${perfil.asistencia_mes}: ${fmt(perfil.asistencia_tam)} %` : ""}`}
                 accent={ACENTO_CATEGORIA[perfil.asistencia_categoria] || "slate"}
               />
               <KpiCard
-                label="Interacciones"
-                value={progreso?.interacciones_total ?? "—"}
-                sub="últimos 30 días"
+                label="Sesiones en Kolibri"
+                value={progreso ? progreso.interacciones_total : "—"}
+                sub={errorProgreso
+                  ? "No se pudo cargar la actividad de Kolibri"
+                  : sinActividad ? "Sin actividad registrada en los últimos 30 días" : "últimos 30 días"}
                 accent="blue"
               />
               <KpiCard
-                label="Tiempo Kolibri"
-                value={progreso?.tiempo_total_horas != null ? `${progreso.tiempo_total_horas}h` : "—"}
-                sub={progreso?.contenidos_completados != null ? `${progreso.contenidos_completados} completados` : null}
+                label="Tiempo en Kolibri"
+                value={progreso && !sinActividad ? `${fmt(progreso.tiempo_total_horas)} h` : "—"}
+                sub={progreso && !sinActividad
+                  ? `${progreso.contenidos_completados} ${progreso.contenidos_completados === 1 ? "recurso completado" : "recursos completados"}`
+                  : null}
                 accent="blue"
               />
             </div>
 
-            {/* Factores de riesgo SHAP */}
-            {perfil.factores_riesgo?.length > 0 && (
+            {/* Tipos de recurso usados en Kolibri */}
+            {progreso && !sinActividad && (
               <div className="border border-slate-200 rounded-xl p-4">
                 <h3 className="text-sm font-semibold text-slate-700 mb-3">
-                  Factores que influyen en el riesgo
+                  Tipos de recurso usados en Kolibri (últimos 30 días)
                 </h3>
-                <div className="space-y-2">
-                  {perfil.factores_riesgo.map((f, i) => (
-                    <div key={i}>
-                      <div className="flex justify-between text-xs text-slate-600 mb-0.5">
-                        <span>{f.factor}</span>
-                        <span className={f.direccion === "aumenta riesgo" ? "text-red-600" : "text-green-600"}>
-                          {f.direccion === "aumenta riesgo" ? "↑" : "↓"} {f.direccion}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${f.direccion === "aumenta riesgo" ? "bg-red-400" : "bg-green-400"}`}
-                          style={{ width: `${Math.min(100, Math.abs(f.importancia) * 200)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Perfil DUA */}
-            {progreso && (
-              <div className="border border-slate-200 rounded-xl p-4">
-                <h3 className="text-sm font-semibold text-slate-700 mb-3">Perfil de aprendizaje (DUA)</h3>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   {[
-                    { label: "Video", value: progreso.dua_ratio_video },
+                    { label: "Videos", value: progreso.dua_ratio_video },
                     { label: "Ejercicios", value: progreso.dua_ratio_ejercicio },
-                    { label: "Completación", value: progreso.dua_ratio_completacion },
+                    { label: "Completados", value: progreso.dua_ratio_completacion },
                   ].map(({ label, value }) => (
                     <div key={label} className="bg-slate-50 rounded-lg p-3">
                       <p className="text-xs text-slate-400 mb-1">{label}</p>
                       <p className="text-lg font-bold text-slate-700">
-                        {value != null ? `${Math.round(value * 100)}%` : "—"}
+                        {value != null ? `${Math.round(value * 100)} %` : "—"}
                       </p>
+                      <p className="text-xs text-slate-400">de las sesiones</p>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
-
-            {/* Aviso sin consentimiento */}
-            {perfil.consentimiento_predictivo === false && (
-              <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-lg">
-                ℹ️ El apoderado no ha otorgado el consentimiento de alertas tempranas (Capa 2).
-                Los índices de riesgo y factores SHAP no están disponibles.
-              </p>
             )}
           </div>
         )}

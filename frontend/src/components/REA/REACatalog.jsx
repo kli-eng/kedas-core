@@ -488,11 +488,12 @@ export default function REACatalog({ user }) {
   const [filtroNivel, setFiltroNivel] = useState("");
   const [busqueda,    setBusqueda]    = useState("");
 
-  const estId = user?.establecimiento_id || 3;
+  const estId = user?.establecimiento_id ?? null;  // sin establecimiento (administración) no se filtra por uno
 
   const cargar = useCallback(() => {
     setLoading(true); setError(null);
-    const params = new URLSearchParams({ establecimiento_id: estId, limit: 50 });
+    const params = new URLSearchParams({ limit: 50 });
+    if (estId !== null) params.append("establecimiento_id", estId);
     if (filtroVis)   params.append("visibilidad", filtroVis);
     if (filtroAsig)  params.append("asignatura",  filtroAsig);
     if (filtroNivel) params.append("nivel_educativo", filtroNivel);

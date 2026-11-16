@@ -1,8 +1,5 @@
 // frontend/src/components/Dashboard/DashboardRouter.jsx
 import { useEffect, useState } from "react";
-import DashboardDocente from "./DashboardDocente.jsx";
-import DashboardUTP from "./DashboardUTP.jsx";
-import DashboardDirector from "./DashboardDirector.jsx";
 import DashboardAdmin from "./DashboardAdmin.jsx";
 import REACatalog from "../REA/REACatalog.jsx";
 import Perfil360 from "../Estudiantes/Perfil360.jsx";
@@ -45,9 +42,9 @@ function ApoderadoPlaceholder({ user }) {
 
 const ROLE_COMPONENTS = {
   slep_tecnico: DashboardSLEPPlaceholder,
-  docente: DashboardDocente,
-  utp: DashboardUTP,
-  director: DashboardDirector,
+  docente: DashboardInicio,    // dirección, UTP y docente usan el Inicio
+  utp: DashboardInicio,
+  director: DashboardInicio,
   orientador: DashboardConvivenciaPlaceholder,
   psicologo: DashboardConvivenciaPlaceholder,
   coordinador_convivencia: DashboardConvivenciaPlaceholder,
@@ -67,6 +64,8 @@ export default function DashboardRouter() {
 
   // S5-03: hook debe llamarse antes de cualquier return condicional (Rules of Hooks)
   const { mostrar: mostrarOnboarding, cerrar: cerrarOnboarding } = useOnboarding(user);
+  // Reglas de los Hooks: useLocation() va antes de cualquier return condicional
+  const { pathname } = useLocation();
 
   if (!ready) {
     return (
@@ -84,7 +83,6 @@ export default function DashboardRouter() {
     );
   }
 
-  const { pathname } = useLocation();
   const esREA = pathname === '/dashboard/rea';
   const esDenuncias = pathname === '/dashboard/denuncias';
   const esEstudiantes = pathname === '/dashboard/estudiantes';
@@ -95,7 +93,7 @@ export default function DashboardRouter() {
   const esKira        = pathname === '/dashboard/kira';
   const esPredicciones = pathname === '/dashboard/predicciones';
   const esCumplimiento = pathname === '/dashboard/cumplimiento';
-  const Component = ROLE_COMPONENTS[user.role] || DashboardDocente;
+  const Component = ROLE_COMPONENTS[user.role] || DashboardInicio;  // una dirección desconocida lleva al Inicio
 
   return (
     <div className="flex min-h-screen bg-slate-50">

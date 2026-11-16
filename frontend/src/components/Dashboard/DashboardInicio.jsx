@@ -3,7 +3,7 @@
 //
 // Principio de diseño: todo indicador tiene 4 capas de contexto:
 //   1. Qué es (descripción simple)
-//   2. Bueno o malo (semáforo con umbral)
+//   2. Color solo cuando hay una referencia con fuente; si no, gris
 //   3. Con qué se compara (referencia nacional o temporal)
 //   4. Qué hago (acción concreta sugerida)
 
@@ -13,7 +13,7 @@ import UsoKedas from "./UsoKedas.jsx";
 import { getDashboardUTP, getDashboardDirector } from "../../services/api.js";
 
 // ── Componente: tarjeta de indicador con contexto pedagógico ──
-function TarjetaIndicador({ icono, titulo, valor, unidad, semaforo, que_es, comparacion, accion, onClick }) {
+function TarjetaIndicador({ icono, titulo, valor, unidad, semaforo, que_es, comparacion, accion, onClick, etiqueta }) {
   const [mostrarContexto, setMostrarContexto] = useState(false);
 
   const colores = {
@@ -49,7 +49,7 @@ function TarjetaIndicador({ icono, titulo, valor, unidad, semaforo, que_es, comp
 
       {/* Semáforo */}
       <div className={`text-xs font-medium ${cfg.texto}`}>
-        {cfg.dot} {semaforo === "verde" ? "Buen estado" : semaforo === "amarillo" ? "Requiere atención" : semaforo === "rojo" ? "Acción urgente" : semaforo === "neutro" ? "Dato informativo" : "Sin datos todavía"}
+        {cfg.dot} {etiqueta ?? (semaforo === "verde" ? "Buen estado" : semaforo === "amarillo" ? "Requiere atención" : semaforo === "rojo" ? "Acción urgente" : semaforo === "neutro" ? "Dato informativo" : "Sin datos todavía")}
       </div>
 
       {/* Panel de contexto pedagógico (expandible) */}
@@ -141,6 +141,49 @@ const ACCESOS_ADMIN = [
 
 const ROLES_CONVIVENCIA = ["orientador", "psicologo", "coordinador_convivencia"];
 
+function fmtPct(v) {
+  return Number(v).toLocaleString("es-CL", { maximumFractionDigits: 1 });
+}
+
+// La etiqueta de asistencia nombra la categoría del Mineduc (la fuente del color).
+function etiquetaAsistencia(tac) {
+  if (tac === null) return undefined;
+  const cat = tac >= 90 ? "Asistencia esperada" : tac >= 85 ? "Inasistencia reiterada" : tac >= 50 ? "Inasistencia grave" : "Inasistencia crítica";
+  return `${cat} (categorías del Mineduc)`;
+}
+
+// Actividad en Kolibri por nivel (dirección y UTP)
+function KolibriPorNivel({ porNivel }) {
+  if (!porNivel?.length) return null;
+  const horas = (min) => Number((min || 0) / 60).toLocaleString("es-CL", { maximumFractionDigits: 1 });
+  return (
+    <div>
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1">
+        Actividad en Kolibri por nivel
+      </h2>
+      <p className="text-xs text-slate-500 mb-3">Es un conteo de uso, no una medida de aprendizaje. Compáralo entre niveles y en el tiempo.</p>
+      <div className="overflow-x-auto bg-white rounded-lg border border-slate-200">
+        <table className="w-full text-sm">
+          <thead><tr className="text-slate-500 text-xs border-b">
+            <th className="text-left py-2 px-3">Nivel</th>
+            <th className="text-right py-2 px-3">Sesiones</th>
+            <th className="text-right py-2 px-3">Horas de uso</th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {porNivel.map((n) => (
+              <tr key={n.nivel || "sin-nivel"}>
+                <td className="py-2 px-3 font-medium">{n.nivel || "Sin nivel"}</td>
+                <td className="text-right py-2 px-3 tabular-nums">{Number(n.sesiones || 0).toLocaleString("es-CL")}</td>
+                <td className="text-right py-2 px-3 tabular-nums">{horas(n.minutos)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // Indicadores de la plataforma base (Core): solo los que entrega
 // /dashboard/{director|utp}/{id}. Sin datos se muestra "–" y "Sin datos
 // todavía": nunca una cifra de ejemplo ni de otra instalación.
@@ -218,18 +261,19 @@ export default function DashboardInicio({ user }) {
           <TarjetaIndicador
             icono="🗓️"
             titulo="Asistencia del año (TAC)"
-            valor={asistTAC !== null ? `${asistTAC}%` : "–"}
+            valor={asistTAC !== null ? `${fmtPct(asistTAC)} %` : "–"}
             semaforo={semaforoAsistencia}
+            etiqueta={etiquetaAsistencia(asistTAC)}
             que_es="Tasa de asistencia acumulada del año: días asistidos (presente o con atraso) sobre días con registro, según los datos de asistencia cargados en KEDAS. Las ausencias justificadas cuentan como inasistencia, igual que en la tasa del Mineduc."
             comparacion="Categorías del Mineduc (Centro de Estudios, Apuntes 109): asistencia esperada 90 % o más; inasistencia reiterada 85 % a menos de 90 %; grave 50 % a menos de 85 %; crítica menos de 50 %. La asistencia suele bajar en mayo y junio."
             accion={asistTAC === null
               ? "Aún no hay registros de asistencia cargados para este establecimiento."
-              : `${(asistCat?.grave ?? 0) + (asistCat?.critica ?? 0)} estudiante(s) con inasistencia grave o crítica y ${asistCat?.reiterada ?? 0} con inasistencia reiterada${asistTAM !== null ? `. En ${asistMes}: ${asistTAM}%` : ""}. Revisa los casos con sus profesores jefes.`}
+              : `${(asistCat?.grave ?? 0) + (asistCat?.critica ?? 0)} estudiante(s) con inasistencia grave o crítica y ${asistCat?.reiterada ?? 0} con inasistencia reiterada${asistTAM !== null ? `. En ${asistMes}: ${fmtPct(asistTAM)} %` : ""}. Revisa los casos con sus profesores jefes.`}
           />
           <TarjetaIndicador
             icono="🎯"
             titulo="Sesiones Kolibri"
-            valor={sesionesKolibri ?? "–"}
+            valor={sesionesKolibri !== null ? Number(sesionesKolibri).toLocaleString("es-CL") : "–"}
             unidad={sesionesKolibri !== null ? "sesiones" : ""}
             semaforo={sesionesKolibri === null ? "gris" : "neutro"}
             que_es="Total de sesiones de aprendizaje en los registros de Kolibri exportados para este establecimiento."
@@ -245,6 +289,9 @@ export default function DashboardInicio({ user }) {
 
       {/* Lo que KEDAS entregó y pidió digitar — dirección y UTP */}
       {(user?.role === "director" || user?.role === "utp") && estId !== null && <UsoKedas estId={estId} />}
+
+      {/* Actividad en Kolibri por nivel — dirección y UTP */}
+      {conIndicadores && <KolibriPorNivel porNivel={datos?.kolibri_sesiones?.por_nivel} />}
 
       {/* Accesos rápidos */}
       <div>
