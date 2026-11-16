@@ -180,9 +180,10 @@ configurar_firewall() {
     done
     ufw allow 80/tcp  comment "HTTP para nginx/Caddy + ACME http-01" >> "$LOG_FILE" 2>&1
     ufw allow 443/tcp comment "HTTPS para Caddy KEDAS+Kolibri" >> "$LOG_FILE" 2>&1
-    ufw allow 8080/tcp comment "Kolibri directo" >> "$LOG_FILE" 2>&1
+    # Kolibri se publica a través de Caddy (443); el puerto 8080 solo se abre a la red de Docker
+    ufw allow from 172.16.0.0/12 to any port 8080 proto tcp comment "Kolibri solo desde Docker (Caddy)" >> "$LOG_FILE" 2>&1
     ufw --force enable >> "$LOG_FILE" 2>&1
-    log "Firewall configurado: SSH en $(echo $PUERTOS_SSH ${SSH_PORT} | tr ' ' '\n' | sort -u | tr '\n' ' ')(rate-limited), 80, 443, 8080."
+    log "Firewall configurado: SSH en $(echo $PUERTOS_SSH ${SSH_PORT} | tr ' ' '\n' | sort -u | tr '\n' ' ')(rate-limited), 80 y 443; Kolibri 8080 solo desde Docker."
     if ! grep -qx "${SSH_PORT}" <<< "$PUERTOS_SSH"; then
         warn "SSH escucha hoy en: $(echo $PUERTOS_SSH). Se dejaron abiertos para no perder el acceso."
         warn "Si cambia SSH a ${SSH_PORT}, cierre después el puerto anterior con: ufw delete limit <puerto>/tcp"
@@ -594,7 +595,7 @@ verificacion_final() {
     fi
     echo -e "${BOLD}══════════════════════════════════════════════════════${NC}"
     echo -e "${BOLD}  Acceso: https://${CADDY_DOMAIN:-kedas.local}${NC}"
-    echo -e "  Kolibri: http://IP_DEL_SERVIDOR:8080"
+    echo -e "  Kolibri: https://${CADDY_DOMAIN:-kedas.local}/ (a través de Caddy; el puerto 8080 no queda abierto a internet)"
     echo -e "  Administrador inicial y contraseñas: /root/kedas_credenciales_*.txt (borrar tras anotar)"
     echo -e "  Log: $LOG_FILE"
     echo ""
