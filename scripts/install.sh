@@ -91,6 +91,17 @@ RESULTADOS_CHECK=()
 check_pass() { RESULTADOS_CHECK+=("PASS: $1"); }
 check_fail() { RESULTADOS_CHECK+=("FAIL: $1"); }
 
+# Con una IP como dominio, Caddy no puede obtener un certificado público y HTTPS no funciona.
+validar_dominio() {
+    local d="$1"
+    if [[ "$d" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$d" == *:* ]]; then
+        echo -e "${RED}Error: '$d' es una dirección IP.${NC} Con una IP no se puede obtener un certificado HTTPS público."
+        echo "Use un nombre de dominio que apunte a este servidor (ej.: kedas.micolegio.cl),"
+        echo "o deje el dominio vacío para una prueba local (kedas.local, con certificado local)."
+        exit 1
+    fi
+}
+
 mostrar_banner() {
 cat << 'BANNER'
 ╔══════════════════════════════════════════════════════════╗
@@ -309,6 +320,7 @@ configurar_variables_entorno() {
         read -rp "Ingrese el dominio del establecimiento (ej: kedas.micolegio.cl): " DOMINIO
     fi
     DOMINIO="${DOMINIO:-kedas.local}"
+    validar_dominio "$DOMINIO"
 
     cat > "$ENV_FILE" << EOF
 # KEDAS v3.4.0 — Variables de Entorno
@@ -563,8 +575,21 @@ verificacion_final() {
         chmod 600 "$KEDAS_HOME/.env"
     fi
 
+    # Además de que Caddy corra, se comprueba que HTTPS responda (el certificado puede tardar hasta 90 s)
+    DOM_CHECK="${CADDY_DOMAIN:-kedas.local}"
+    if [[ "$DOM_CHECK" == "localhost" || "$DOM_CHECK" == *.local ]]; then CURL_TLS="-k"; TXT_TLS="certificado local de Caddy"; else CURL_TLS=""; TXT_TLS="certificado válido"; fi
+    HTTPS_COD="000"
     if docker ps --filter "name=kedas-caddy" --filter "status=running" | grep -q caddy; then
-        echo -e "  ${GREEN}[PASS]${NC} 5. Caddy en ejecución (TLS automático)"; check_pass "Caddy"
+        for _i in $(seq 1 18); do
+            HTTPS_COD=$(curl -s $CURL_TLS -o /dev/null -w '%{http_code}' --max-time 5 --resolve "${DOM_CHECK}:443:127.0.0.1" "https://${DOM_CHECK}/health" || true)
+            [[ "$HTTPS_COD" == "200" ]] && break
+            sleep 5
+        done
+        if [[ "$HTTPS_COD" == "200" ]]; then
+            echo -e "  ${GREEN}[PASS]${NC} 5. Caddy responde por HTTPS (${TXT_TLS})"; check_pass "Caddy"
+        else
+            echo -e "  ${RED}[FAIL]${NC} 5. Caddy corre, pero HTTPS no responde (código ${HTTPS_COD}). Revisar: docker logs kedas-caddy --tail 30"; check_fail "Caddy"
+        fi
     else
         echo -e "  ${RED}[FAIL]${NC} 5. Caddy no está en ejecución"; check_fail "Caddy"
     fi
@@ -612,6 +637,7 @@ main() {
     echo "=== KEDAS v3.4.0 Instalación (kedas-core) — $(date) — Perfil: $PERFIL ===" >> "$LOG_FILE"
 
     mostrar_banner
+    if [[ -n "$DOMINIO" ]]; then validar_dominio "$DOMINIO"; fi   # antes de tocar el sistema
 
     if ! $SILENCIOSO; then
         echo -e "${BOLD}Este script instalará KEDAS v3.4.0 Core (plataforma base gratuita) — perfil: $PERFIL${NC}"
