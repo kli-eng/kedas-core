@@ -48,7 +48,7 @@ const ONBOARDING = {
     pasos: [
       {
         titulo: "KPIs generales del establecimiento",
-        texto:  "Tu dashboard muestra el estado de riesgo académico, alertas de convivencia activas, alertas vencidas y cumplimiento normativo del RICE en tiempo real.",
+        texto:  "Tu inicio reúne los indicadores disponibles de tu establecimiento, como la asistencia y la actividad en Kolibri. Muestra los datos cargados en KEDAS hasta ese momento.",
       },
       {
         titulo: "Alertas vencidas requieren tu atención",
@@ -56,7 +56,7 @@ const ONBOARDING = {
       },
       {
         titulo: "Verificador RICE",
-        texto:  "KEDAS puede verificar el cumplimiento del Reglamento Interno con la Ley 21.809, Ley 21.801 (dispositivos móviles) y Ley 21.545 (TEA). El plazo para actualizar el RICE venció el 30 de junio de 2026.",
+        texto:  "KEDAS puede verificar el cumplimiento del Reglamento Interno con la Ley 21.809, Ley 21.801 (dispositivos móviles) y Ley 21.545 (TEA). Revisa con tu asesoría legal los plazos de actualización que aplican a tu colegio.",
       },
     ],
   },
@@ -89,8 +89,8 @@ const ONBOARDING = {
         texto:  "Los incidentes de tipo salud mental, vulneración de derechos, acoso escolar y consumo de sustancias generan automáticamente un protocolo formal cifrado. Solo la Dupla Psicosocial y el Director pueden acceder a ellos.",
       },
       {
-        titulo: "Los datos están cifrados (Art. 2°g Ley 21.719)",
-        texto:  "Los protocolos se almacenan con cifrado AES-256. Toda acción queda registrada en la bitácora de auditoría con fecha y actor. Esto protege a los estudiantes y al establecimiento.",
+        titulo: "Los protocolos se guardan cifrados",
+        texto:  "Los protocolos se guardan cifrados en la base de datos. Toda acción queda registrada en la bitácora de auditoría con fecha y actor. Esto protege a los estudiantes y al establecimiento.",
       },
       {
         titulo: "Canal de Denuncias Ley Karin",
@@ -105,7 +105,7 @@ const ONBOARDING = {
     pasos: [
       {
         titulo: "Supervisa los plazos legales",
-        texto:  "Tu rol es verificar que cada alerta e incidente sea atendido dentro de los 5 días hábiles que exige el protocolo. El dashboard muestra el estado de cumplimiento en tiempo real.",
+        texto:  "Tu rol es verificar que cada alerta e incidente sea atendido dentro de los 5 días hábiles que KEDAS fija como plazo interno. El panel muestra el estado de cada caso con los datos registrados.",
       },
       {
         titulo: "Incidentes pendientes de completar",
@@ -166,7 +166,7 @@ const ONBOARDING = {
       },
       {
         titulo: "Sin acceso a datos individuales",
-        texto:  "Por diseño legal (Ley 21.719 Art. 14°), el rol SLEP técnico solo accede a datos agregados y anonimizados. Los datos individuales de estudiantes solo son visibles para el personal del establecimiento.",
+        texto:  "Por diseño, el rol SLEP técnico solo accede a datos agregados y anonimizados. Los datos individuales de estudiantes solo son visibles para el personal del establecimiento.",
       },
       {
         titulo: "Auditoría y cumplimiento",
@@ -208,7 +208,7 @@ export default function OnboardingModal({ user, onCerrar, forzarMostrar = false 
           <div className="text-3xl mb-2">{config.icono}</div>
           <h2 className="text-xl font-bold leading-tight">{config.titulo}</h2>
           <p className="text-blue-200 text-xs mt-1">
-            KEDAS v3.4.0 · Kairós Learning Intelligent · {user?.nombre_establecimiento || "Establecimiento"}
+            KEDAS v3.4.0 · Kairós Learning Intelligent{user?.nombre_establecimiento ? ` · ${user.nombre_establecimiento}` : ""}
           </p>
         </div>
 

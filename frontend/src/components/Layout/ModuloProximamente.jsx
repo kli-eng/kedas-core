@@ -1,5 +1,5 @@
 // frontend/src/components/Layout/ModuloProximamente.jsx
-// FE-01 — Placeholder para módulos DEC-30 sin pantalla propia todavía.
+// Placeholder para módulos sin pantalla propia todavía.
 
 export default function ModuloProximamente({ modulo, nombre, descripcion }) {
   return (

@@ -33,7 +33,7 @@ export default function Sidebar({ user }) {
         ))}
       </ul>
 
-      {/* FE-01 — Módulos DEC-30 agrupados */}
+      {/* Módulos agrupados */}
       {menu.grupos.length > 0 && (
         <div className="mt-4 space-y-3">
           {menu.grupos.map((grupo) => (

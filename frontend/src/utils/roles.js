@@ -30,9 +30,9 @@ export function tienePermiso(rol, permiso) {
   return permisos.includes("*") || permisos.includes(permiso);
 }
 
-// FE-01 — Menú agrupado por los 7 módulos DEC-30 (validados 10-jul-2026).
+// Menú agrupado por los 7 módulos (validados 10-jul-2026).
 // Cada rol tiene 'transversales' (fuera de los módulos: Inicio, KIRA, Estudiantes,
-// Canal Denuncias) y 'grupos' (ítems anidados bajo su módulo DEC-30 correspondiente).
+// Canal Denuncias) y 'grupos' (ítems anidados bajo su módulo correspondiente).
 // MOD-05 (Cumplimiento) y MOD-06 (Predicciones) usan ModuloProximamente.jsx
 // como placeholder hasta que exista pantalla real.
 export const MENU_POR_ROL = {

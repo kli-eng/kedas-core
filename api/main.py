@@ -2,7 +2,7 @@
 # KEDAS Core — API REST Principal
 # Archivo: api/main.py
 #
-# CORREGIDO 29-jul-2026 (DEC-59): la versión anterior era una copia
+# CORREGIDO 29-jul-2026: la versión anterior era una copia
 # literal de Premium — importaba curricular, apoderado, denuncias, ia,
 # convivencia, predicciones, reportes, pseudonimos, reportes_slep,
 # indicadores. NINGUNO de esos archivos existe en kedas-core. El API

@@ -27,7 +27,7 @@ router = APIRouter()
 
 
 def _con_zona_chile(v):
-    """DEC-73: una fecha de vencimiento sin zona horaria se interpreta en hora de Chile."""
+    """una fecha de vencimiento sin zona horaria se interpreta en hora de Chile."""
     if v is not None and v.tzinfo is None:
         return v.replace(tzinfo=ZoneInfo("America/Santiago"))
     return v
@@ -37,12 +37,12 @@ def _con_zona_chile(v):
 class CrearUsuarioIn(BaseModel):
     username: str = Field(..., min_length=3, max_length=64)
     password: str = Field(..., max_length=128,
-        description="Contraseña inicial. DEC-73: 15 a 64 caracteres; la persona la cambia al primer ingreso.")
+        description="Contraseña inicial. 15 a 64 caracteres; la persona la cambia al primer ingreso.")
     nombre_completo: str = Field(..., min_length=2, max_length=255)
     email: Optional[EmailStr] = None
     role: str
     establecimiento_id: Optional[int] = None
-    vence_en: Optional[datetime] = None   # DEC-73: vencimiento de la cuenta (opcional)
+    vence_en: Optional[datetime] = None   # vencimiento de la cuenta (opcional)
 
     @field_validator("vence_en")
     @classmethod
@@ -65,8 +65,8 @@ class ActualizarUsuarioIn(BaseModel):
     role: Optional[str] = None
     establecimiento_id: Optional[int] = None
     activo: Optional[bool] = None
-    vence_en: Optional[datetime] = None   # DEC-73: null quita el vencimiento
-    # DEC-73: ya no se acepta (responde 400); la contraseña de otra persona solo se
+    vence_en: Optional[datetime] = None   # null quita el vencimiento
+    # ya no se acepta (responde 400); la contraseña de otra persona solo se
     # fija con «Restablecer contraseña».
     password_nueva: Optional[str] = None
 
@@ -93,8 +93,8 @@ class UsuarioOut(BaseModel):
     activo: bool
     created_at: datetime
     ultimo_login: Optional[datetime] = None
-    vence_en: Optional[datetime] = None               # DEC-73
-    debe_cambiar_password: Optional[bool] = None      # DEC-73
+    vence_en: Optional[datetime] = None
+    debe_cambiar_password: Optional[bool] = None
 
 
 # ── Helper de autorización ────────────────────────────────────
@@ -153,7 +153,7 @@ async def crear_usuario(
     if existe:
         raise HTTPException(409, f"El username '{body.username}' ya existe.")
 
-    # DEC-73: política de contraseñas y vencimiento
+    # política de contraseñas y vencimiento
     validar_password_nueva(body.password, body.username)
     if body.vence_en is not None and body.vence_en <= datetime.now(timezone.utc):
         raise HTTPException(400, "La fecha de vencimiento debe ser futura.")
@@ -264,7 +264,7 @@ async def actualizar_usuario(
     idx = 1
 
     cambios = body.model_dump(exclude_unset=True)
-    # DEC-73: la contraseña de otra persona solo se fija con «Restablecer contraseña»
+    # la contraseña de otra persona solo se fija con «Restablecer contraseña»
     if "password_nueva" in cambios:
         raise HTTPException(400, "Para cambiar la contraseña de otra persona use «Restablecer "
                                  "contraseña»: genera una temporal y obliga a cambiarla al ingresar.")
@@ -356,7 +356,7 @@ async def reset_password(
     ):
         raise HTTPException(403, "No autorizado.")
 
-    nueva = secrets.token_urlsafe(15)   # DEC-73: 20 caracteres aleatorios
+    nueva = secrets.token_urlsafe(15)   # 20 caracteres aleatorios
     await conn.execute(
         "UPDATE kedas_usuarios SET password_hash = $1, debe_cambiar_password = TRUE, "
         "login_fallos = 0, login_bloqueado_hasta = NULL, "   # levanta el bloqueo por intentos
@@ -367,7 +367,7 @@ async def reset_password(
     return {
         "username": target["username"],
         "password_temporal": nueva,
-        "aviso": "Mostrar SOLO una vez. La persona deberá cambiarla al ingresar (DEC-73).",
+        "aviso": "Mostrar SOLO una vez. La persona deberá cambiarla al ingresar.",
     }
 
 

@@ -66,7 +66,7 @@ class Token(BaseModel):
     token_type:   str
     rol:          str
     expires_in:   int    # segundos hasta expiración
-    debe_cambiar_password: bool = False   # DEC-73: el token solo sirve para cambiarla
+    debe_cambiar_password: bool = False   # el token solo sirve para cambiarla
     mfa_requerido: bool = False   # el token solo sirve para /auth/mfa/validar-login
     mfa_registro:  bool = False   # el token solo sirve para configurar el doble factor
 
@@ -131,7 +131,7 @@ def hashear_password(password: str) -> str:
     return pwd_ctx.hash(password)
 
 
-# ── DEC-73 parte 1 (16-oct-2026): política de contraseñas ─────
+# ── política de contraseñas ─────
 # Fuentes: NIST SP 800-63B-4 §3.1.1.2 (mínimo 15 caracteres si la contraseña es el único
 # factor; aceptar al menos 64; lista de bloqueo; sin reglas de composición ni cambio
 # periódico) y OWASP ASVS 5.0 req. 6.2.1 (15 caracteres fuertemente recomendado).
@@ -159,7 +159,7 @@ def _cargar_bloqueo() -> frozenset:
         with open(_RUTA_BLOQUEO, encoding="utf-8") as f:
             return frozenset(l.strip().lower() for l in f if l.strip())
     except OSError:
-        logger.error("DEC-73: no se pudo leer la lista de bloqueo en %s", _RUTA_BLOQUEO)
+        logger.error("no se pudo leer la lista de bloqueo en %s", _RUTA_BLOQUEO)
         return frozenset()
 
 
@@ -230,7 +230,7 @@ async def obtener_usuario_actual(token: str = Depends(oauth2_scheme)) -> TokenDa
         if actor_hash is None or rol not in ROLES_VALIDOS:
             raise excepcion
         if payload.get("alcance"):
-            # DEC-73: el token de cambio obligatorio solo sirve en /auth/cambiar-password
+            # el token de cambio obligatorio solo sirve en /auth/cambiar-password
             raise excepcion
         return TokenData(
             actor_hash=actor_hash,
@@ -328,7 +328,7 @@ async def _auth_db():
 
 
 async def _auditar_auth(conn, actor_hash: str, rol: str, accion: str, resultado: str):
-    """DEC-73: auditoría de eventos de credenciales (sin el usuario en claro)."""
+    """auditoría de eventos de credenciales (sin el usuario en claro)."""
     await conn.execute(
         "INSERT INTO kedas_audit_log (actor_id, actor_rol, accion, entidad, resultado) "
         "VALUES ($1, $2, $3, $4, $5)",
@@ -414,7 +414,7 @@ async def login(
     actor_hash = hash_actor_id(row["username"])
     ahora = datetime.now(timezone.utc)
 
-    # DEC-73: cuenta con vencimiento. Se informa solo con la contraseña correcta,
+    # cuenta con vencimiento. Se informa solo con la contraseña correcta,
     # para no revelar si una cuenta existe.
     if row["vence_en"] is not None and row["vence_en"] <= ahora:
         await _auditar_auth(conn, actor_hash, row["role"], "cuenta_vencida",
@@ -428,7 +428,7 @@ async def login(
         "user_id": row["id"],
     }
 
-    # DEC-73: contraseña fijada por otra persona. Token de 10 minutos que solo sirve
+    # contraseña fijada por otra persona. Token de 10 minutos que solo sirve
     # para cambiarla: obtener_usuario_actual lo rechaza en todas las demás rutas.
     if row["debe_cambiar_password"]:
         duracion = timedelta(minutes=TOKEN_CAMBIO_MIN)
@@ -450,7 +450,7 @@ async def login(
     if paso_mfa is not None:
         return paso_mfa
 
-    # DEC-73: el token no dura más que la cuenta
+    # el token no dura más que la cuenta
     duracion = timedelta(hours=TOKEN_EXPIRE_H)
     if row["vence_en"] is not None:
         duracion = min(duracion, row["vence_en"] - ahora)
@@ -471,7 +471,7 @@ async def login(
     )
 
 
-# ── DEC-73: cambio de la propia contraseña ────────────────────
+# ── cambio de la propia contraseña ────────────────────
 class CambiarPasswordIn(BaseModel):
     password_actual: str
     password_nueva: str
@@ -499,7 +499,7 @@ async def _usuario_para_cambio(token: str = Depends(oauth2_scheme)) -> TokenData
     )
 
 
-@router.post("/cambiar-password", summary="Cambiar la propia contraseña (DEC-73)")
+@router.post("/cambiar-password", summary="Cambiar la propia contraseña")
 @limiter.limit("10/minute")
 async def cambiar_password(
     request: Request,
@@ -508,7 +508,7 @@ async def cambiar_password(
     conn: asyncpg.Connection = Depends(_auth_db),
 ):
     """Cambia la contraseña del usuario del token. Pide la contraseña actual, aplica la
-    política de DEC-73, quita la marca de cambio obligatorio y lo registra en auditoría."""
+    política de contraseñas, quita la marca de cambio obligatorio y lo registra en auditoría."""
     row = await conn.fetchrow(
         "SELECT id, username, password_hash, role, activo, vence_en "
         "FROM kedas_usuarios WHERE id = $1",
@@ -568,7 +568,7 @@ async def init_admin(
     if existe:
         raise HTTPException(status_code=409, detail="already_exists")
 
-    validar_password_nueva(body.password, body.username)   # DEC-73
+    validar_password_nueva(body.password, body.username)
 
     row = await conn.fetchrow(
         """

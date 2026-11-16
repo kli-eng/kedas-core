@@ -3,7 +3,7 @@
 # Archivo: api/routers/estudiantes.py
 # Licencia: AGPL-3.0-or-later (KLI)
 #
-# REDISEÑADO 29-jul-2026 (DEC-59) respecto a la versión Premium:
+# REDISEÑADO 29-jul-2026 respecto a la versión Premium:
 # - Se eliminaron riesgo_score, risk_level, factores_riesgo y
 #   consentimiento_predictivo -- dependían de kedas_perfiles_riesgo
 #   y kedas_consentimientos, ambas tablas exclusivas de Premium

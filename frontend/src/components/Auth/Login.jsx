@@ -1,5 +1,5 @@
 // frontend/src/components/Auth/Login.jsx
-// DEC-73 (16-oct-2026): si la contraseña fue fijada por otra persona (cuenta nueva o
+// Si la contraseña fue fijada por otra persona (cuenta nueva o
 // restablecida), se pide cambiarla antes de entrar. Política según NIST SP 800-63B-4
 // y OWASP ASVS: de 15 a 64 caracteres, sin exigir símbolos ni mayúsculas.
 import { useState } from "react";

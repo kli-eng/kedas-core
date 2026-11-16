@@ -3,7 +3,7 @@
 # Archivo: api/routers/dashboard.py
 # Licencia: AGPL-3.0-or-later (KLI)
 #
-# REDISEÑADO 29-jul-2026 (DEC-59) respecto a la versión Premium:
+# REDISEÑADO 29-jul-2026 respecto a la versión Premium:
 # - La versión Premium usa v_dashboard_establecimiento, una vista que
 #   depende de kedas_perfiles_riesgo, kedas_alertas y kedas_conv_incidentes
 #   -- las 3 son tablas exclusivas de Premium (MOD-06 Predicciones y

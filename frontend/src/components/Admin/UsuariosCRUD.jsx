@@ -7,7 +7,7 @@ import {
 } from "../../services/api.js";
 import { NOMBRE_ROL, ROLES } from "../../utils/roles.js";
 
-// DEC-73 (16-oct-2026): política de contraseñas (NIST SP 800-63B-4 y OWASP ASVS)
+// Política de contraseñas (NIST SP 800-63B-4 y OWASP ASVS)
 const PWD_MIN = 15;
 const PWD_MAX = 64;
 
@@ -234,7 +234,7 @@ function UsuarioFormModal({ user, editing, onClose, onSave }) {
 
   function generarPasswordSegura() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
-    // DEC-73: 20 caracteres con crypto.getRandomValues (Math.random no es seguro)
+    // 20 caracteres con crypto.getRandomValues (Math.random no es seguro)
     const azar = new Uint32Array(20);
     crypto.getRandomValues(azar);
     let pwd = "";
@@ -255,7 +255,7 @@ function UsuarioFormModal({ user, editing, onClose, onSave }) {
         if (form.nombre_completo !== editing.nombre_completo) payload.nombre_completo = form.nombre_completo;
         if (form.email !== editing.email) payload.email = form.email || null;
         if (form.role !== editing.role) payload.role = form.role;
-        // DEC-73: la contraseña de otra persona solo se cambia con «Reset pwd»
+        // la contraseña de otra persona solo se cambia con «Reset pwd»
         if (form.vence_fecha !== fechaChile(editing.vence_en)) {
           payload.vence_en = venceDesdeFecha(form.vence_fecha);
         }

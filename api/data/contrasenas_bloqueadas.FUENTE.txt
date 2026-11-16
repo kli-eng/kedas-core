@@ -1,4 +1,4 @@
-Lista de contraseñas bloqueadas de KEDAS (DEC-73, 16-oct-2026)
+Lista de contraseñas bloqueadas de KEDAS (16-oct-2026)
 
 Origen: SecLists, archivo Passwords/Common-Credentials/xato-net-10-million-passwords-1000000.txt
 https://github.com/danielmiessler/SecLists (descargado el 16-oct-2026)

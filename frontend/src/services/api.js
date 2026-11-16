@@ -61,7 +61,7 @@ export async function loginUser({ username, password }) {
   if (res.status === 401) throw new Error("Usuario o contraseña incorrectos");
   if (!res.ok) throw new Error(await detalleError(res, `Error ${res.status} al iniciar sesión`));
   const data = await res.json();
-  // DEC-73: contraseña fijada por otra persona. El token temporal NO se guarda:
+  // contraseña fijada por otra persona. El token temporal NO se guarda:
   // solo sirve para /auth/cambiar-password.
   if (data.debe_cambiar_password) {
     return { debeCambiar: true, tokenTemporal: data.access_token };
@@ -113,7 +113,7 @@ async function detalleError(res, porDefecto) {
   }
 }
 
-// DEC-73: cambio de contraseña (obligatorio al primer ingreso o voluntario)
+// cambio de contraseña (obligatorio al primer ingreso o voluntario)
 export async function cambiarPassword({ token, passwordActual, passwordNueva }) {
   const res = await fetch(`${API_BASE}/auth/cambiar-password`, {
     method: "POST",
